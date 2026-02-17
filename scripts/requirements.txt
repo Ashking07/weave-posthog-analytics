@@ -1,0 +1,1 @@
+# No Python deps required; quality_miner.py uses only stdlib (subprocess, json, etc.)

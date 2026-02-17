@@ -20,6 +20,15 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Quality Signals (test-touch)
+
+The dashboard shows a heuristic quality signal (test-touch ratio) for merged PRs. This requires:
+
+1. **Python 3**
+2. **Git** (for cloning the PostHog repo)
+
+Quality mining runs on `/api/impact` and caches results for 6 hours (in-memory + optional JSON file in `os.tmpdir()`). If Python/git are unavailable (e.g. on Vercel), the API degrades gracefully and quality signals are omitted with a warning.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

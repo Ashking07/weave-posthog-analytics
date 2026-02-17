@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getInsights } from "@/lib/llm-insights";
+import { getQualitySignals } from "@/lib/quality-mining";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -9,6 +11,7 @@ interface PRNode {
   url: string;
   createdAt: string;
   mergedAt: string;
+  mergeCommit: { oid: string } | null;
   additions: number;
   deletions: number;
   author: { login: string; avatarUrl: string } | null;
@@ -41,6 +44,12 @@ interface TopPR {
   deletions: number;
 }
 
+interface QualitySignals {
+  prs_with_tests: number;
+  total_prs_with_merge_commit_found: number;
+  test_touch_ratio: number | null;
+}
+
 interface Engineer {
   login: string;
   avatarUrl: string;
@@ -49,6 +58,7 @@ interface Engineer {
   merged_prs: number;
   reviews_given: number;
   medianMergeDays: number;
+  quality: QualitySignals | null;
   topPRs: TopPR[];
 }
 
@@ -76,6 +86,7 @@ query MergedPRs($searchQuery: String!, $first: Int!, $after: String) {
         url
         createdAt
         mergedAt
+        mergeCommit { oid }
         additions
         deletions
         author { login avatarUrl }
@@ -170,7 +181,33 @@ async function fetchMergedPRs(token: string, since: string): Promise<PRNode[]> {
 // Metric computation
 // ---------------------------------------------------------------------------
 
-function computeMetrics(prs: PRNode[], windowStart: Date): Engineer[] {
+function computeQualityForEngineer(
+  prs: PRNode[],
+  quality: { touchedTests: Record<string, boolean | null> },
+): QualitySignals {
+  let prsWithTests = 0;
+  let totalFound = 0;
+  for (const pr of prs) {
+    const sha = pr.mergeCommit?.oid?.toLowerCase();
+    if (!sha) continue;
+    const touched = quality.touchedTests[sha];
+    if (touched === true || touched === false) {
+      totalFound++;
+      if (touched) prsWithTests++;
+    }
+  }
+  return {
+    prs_with_tests: prsWithTests,
+    total_prs_with_merge_commit_found: totalFound,
+    test_touch_ratio: totalFound > 0 ? Math.round((prsWithTests / totalFound) * 100) / 100 : null,
+  };
+}
+
+function computeMetrics(
+  prs: PRNode[],
+  windowStart: Date,
+  qualityResult: { touchedTests: Record<string, boolean | null> } | null,
+): Engineer[] {
   const authorMap = new Map<
     string,
     {
@@ -226,14 +263,13 @@ function computeMetrics(prs: PRNode[], windowStart: Date): Engineer[] {
 
     const total = pr_points + review_points;
 
-    // Median time-to-merge in days (context only, not scored)
+    // Median time-to-merge in days (mergedAt - createdAt from PR timestamps; context only, not scored)
     const mergeDays = data.prs.map((pr) => {
       const created = new Date(pr.createdAt).getTime();
       const merged = new Date(pr.mergedAt).getTime();
       return (merged - created) / 86_400_000; // ms → days
     });
-    const medianMergeDays =
-      Math.round(median(mergeDays) * 10) / 10; // 1 decimal
+    const medianMergeDays = median(mergeDays); // raw days; round in UI
 
     // Top 3 most recent merged PRs
     const topPRs: TopPR[] = [...data.prs]
@@ -247,6 +283,10 @@ function computeMetrics(prs: PRNode[], windowStart: Date): Engineer[] {
         deletions,
       }));
 
+    const quality = qualityResult
+      ? computeQualityForEngineer(data.prs, qualityResult)
+      : null;
+
     engineers.push({
       login,
       avatarUrl: data.avatarUrl,
@@ -258,6 +298,7 @@ function computeMetrics(prs: PRNode[], windowStart: Date): Engineer[] {
       merged_prs,
       reviews_given: data.reviewsGiven,
       medianMergeDays,
+      quality,
       topPRs,
     });
   }
@@ -283,13 +324,28 @@ export async function GET() {
     const since = sinceDate(WINDOW_DAYS);
     const windowStart = new Date(since);
     const prs = await fetchMergedPRs(token, since);
-    const top = computeMetrics(prs, windowStart);
+
+    // Collect merge commit SHAs from non-bot PRs for quality mining
+    const mergeShas: string[] = [];
+    for (const pr of prs) {
+      if (pr.author?.login && !isBot(pr.author.login) && pr.mergeCommit?.oid) {
+        mergeShas.push(pr.mergeCommit.oid);
+      }
+    }
+
+    const { result: qualityResult, warning: qualityWarning } =
+      await getQualitySignals(mergeShas, since);
+
+    const top = computeMetrics(prs, windowStart, qualityResult ?? null);
+    const insights = await getInsights(top.slice(0, 5), since);
 
     return NextResponse.json(
       {
         generatedAt: new Date().toISOString(),
         windowDays: WINDOW_DAYS,
+        qualityWarning: qualityWarning ?? undefined,
         top,
+        insights: insights ?? undefined,
       },
       {
         headers: {
