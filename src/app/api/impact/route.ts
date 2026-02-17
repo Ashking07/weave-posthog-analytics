@@ -57,7 +57,7 @@ interface Engineer {
 // ---------------------------------------------------------------------------
 
 const GITHUB_GQL = "https://api.github.com/graphql";
-const BOT_RE = /(dependabot|github-actions|renovate|bot|-app$)/i;
+const BOT_RE = /(dependabot|github-actions|renovate|bot|app$|apps$)/i
 const MAX_PRS = 300;
 const PAGE_SIZE = 50;
 const WINDOW_DAYS = 90;
