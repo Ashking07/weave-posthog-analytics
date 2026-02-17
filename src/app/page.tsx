@@ -28,6 +28,12 @@ interface TopPR {
   deletions: number;
 }
 
+interface QualitySignals {
+  prs_with_tests: number;
+  total_prs_with_merge_commit_found: number;
+  test_touch_ratio: number | null;
+}
+
 interface Engineer {
   login: string;
   avatarUrl: string;
@@ -36,13 +42,21 @@ interface Engineer {
   merged_prs: number;
   reviews_given: number;
   medianMergeDays: number;
+  quality: QualitySignals | null;
   topPRs: TopPR[];
+}
+
+interface EngineerInsight {
+  summary: string;
+  prTypes: Record<string, number>;
 }
 
 interface ImpactResponse {
   generatedAt: string;
   windowDays: number;
+  qualityWarning?: string;
   top: Engineer[];
+  insights?: Record<string, EngineerInsight> | null;
   error?: string;
 }
 
@@ -71,6 +85,14 @@ function relativeTime(iso: string): string {
 
 function pct(value: number, total: number): number {
   return total === 0 ? 0 : (value / total) * 100;
+}
+
+function formatMedianMerge(days: number): string {
+  if (days < 1) {
+    const hrs = Math.round(days * 24);
+    return `${hrs}h`;
+  }
+  return `${days.toFixed(1)}d`;
 }
 
 type MixLabel = "Delivery-heavy" | "Review-heavy" | "Balanced";
@@ -351,6 +373,29 @@ function DetailPanel({
       </div>
 
       <div className="mt-2.5">
+        <p className="text-xs text-zinc-600 dark:text-zinc-400">
+          Median time to merge: {formatMedianMerge(engineer.medianMergeDays)}
+        </p>
+      </div>
+
+      {engineer.quality && (
+        <div className="mt-2.5">
+          <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+            Quality signal
+          </h4>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            Tests touched: {engineer.quality.prs_with_tests}/{engineer.quality.total_prs_with_merge_commit_found}
+            {engineer.quality.test_touch_ratio != null && (
+              <> ({Math.round(engineer.quality.test_touch_ratio * 100)}%)</>
+            )}
+          </p>
+          <p className="mt-1 text-[10px] italic text-zinc-400 dark:text-zinc-500">
+            Test-touch is a heuristic quality signal (context-only).
+          </p>
+        </div>
+      )}
+
+      <div className="mt-2.5">
         <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
           Recent PRs
         </h4>
@@ -498,6 +543,11 @@ export default function Home() {
             </span>
             <span className="ml-auto flex-shrink-0 text-[10px] italic text-zinc-300 dark:text-zinc-600">
               Med merge = context only
+              {data.qualityWarning && (
+                <span className="ml-2" title={data.qualityWarning}>
+                  (quality: unavailable)
+                </span>
+              )}
             </span>
           </div>
 
@@ -580,7 +630,7 @@ export default function Home() {
                             {eng.reviews_given}
                           </td>
                           <td className="py-2.5 pr-3 text-right font-mono text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
-                            {eng.medianMergeDays.toFixed(1)}d
+                            {formatMedianMerge(eng.medianMergeDays)}
                           </td>
                           <td className="py-2.5 pr-3">
                             <MixBadge
@@ -633,6 +683,21 @@ export default function Home() {
                   })}
                 </div>
               </Card>
+
+              {/* LLM Insight – shown when an engineer is selected */}
+              {selected && data?.insights && (() => {
+                const insight = data.insights[selected.login] ?? data.insights[selected.login.toLowerCase()];
+                return insight ? (
+                  <Card className="border-l-4 border-l-zinc-300 bg-zinc-50/80 px-4 py-2.5 dark:border-l-zinc-600 dark:bg-zinc-800/40">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                      LLM Insight · {selected.login}
+                    </p>
+                    <blockquote className="mt-1 border-0 pl-0 text-sm italic leading-snug text-zinc-600 dark:text-zinc-400">
+                      &ldquo;{insight.summary}&rdquo;
+                    </blockquote>
+                  </Card>
+                ) : null;
+              })()}
             </div>
 
             {/* Right column */}
