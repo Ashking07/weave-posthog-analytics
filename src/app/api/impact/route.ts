@@ -333,10 +333,8 @@ export async function GET() {
       }
     }
 
-    const { result: qualityResult, warning: qualityWarning } = getQualitySignals(
-      mergeShas,
-      since,
-    );
+    const { result: qualityResult, warning: qualityWarning } =
+      await getQualitySignals(mergeShas, since);
 
     const top = computeMetrics(prs, windowStart, qualityResult ?? null);
     const insights = await getInsights(top.slice(0, 5), since);

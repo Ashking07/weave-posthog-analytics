@@ -115,6 +115,41 @@ function runMiner(
   }
 }
 
+/** Fetch precomputed quality artifact from URL. */
+async function fetchArtifact(
+  url: string,
+): Promise<{ ok: boolean; result?: QualityResult; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 0 },
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Artifact fetch failed: HTTP ${res.status}`,
+      };
+    }
+    const json = (await res.json()) as {
+      touchedTests?: Record<string, boolean | null>;
+    };
+    const touchedTests = json.touchedTests;
+    if (!touchedTests || typeof touchedTests !== "object") {
+      return {
+        ok: false,
+        error: "Invalid artifact: missing or invalid touchedTests",
+      };
+    }
+    return {
+      ok: true,
+      result: { touchedTests },
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Artifact fetch error: ${msg}` };
+  }
+}
+
 /** Load from file cache if valid. */
 function loadFileCache(since: string): QualityResult | null {
   const cachePath = getCachePath();
@@ -146,14 +181,14 @@ function saveFileCache(since: string, result: QualityResult): void {
 
 /**
  * Get quality signals for the given merge commit SHAs.
- * Uses in-memory and optional file cache; runs PyDriller mining on cache miss.
+ * When QUALITY_ARTIFACT_URL is set: fetch precomputed artifact (no clone/Python).
+ * Otherwise: use in-memory/file cache, or run PyDriller mining.
  */
-export function getQualitySignals(
+export async function getQualitySignals(
   mergeShas: string[],
   sinceDate: string,
-): { result: QualityResult | null; warning?: string } {
+): Promise<{ result: QualityResult | null; warning?: string }> {
   const since = sinceDate;
-  const cacheKey = `${CACHE_KEY}:${since}`;
 
   // 1. Check in-memory cache
   if (memoryCache && memoryCache.since === since) {
@@ -170,7 +205,22 @@ export function getQualitySignals(
     return { result: fileResult };
   }
 
-  // 3. Filter to unique SHAs
+  // 3. If QUALITY_ARTIFACT_URL is set, fetch precomputed artifact
+  const artifactUrl = process.env.QUALITY_ARTIFACT_URL;
+  if (artifactUrl) {
+    const artifact = await fetchArtifact(artifactUrl);
+    if (artifact.ok && artifact.result) {
+      memoryCache = { fetchedAt: Date.now(), since, result: artifact.result };
+      saveFileCache(since, artifact.result);
+      return { result: artifact.result };
+    }
+    return {
+      result: null,
+      warning: `Quality artifact unavailable: ${artifact.error}`,
+    };
+  }
+
+  // 4. Filter to unique SHAs (local mining fallback)
   const uniqueShas = [...new Set(mergeShas)].filter(Boolean);
   if (uniqueShas.length === 0) {
     return {
@@ -178,7 +228,7 @@ export function getQualitySignals(
     };
   }
 
-  // 4. Clone repo if needed
+  // 5. Clone repo if needed
   const clone = ensureRepoCloned(sinceDate);
   if (!clone.ok) {
     return {
@@ -187,7 +237,7 @@ export function getQualitySignals(
     };
   }
 
-  // 5. Run miner
+  // 6. Run miner
   const repoPath = getRepoPath();
   const miner = runMiner(repoPath, sinceDate, uniqueShas);
   if (!miner.ok || !miner.result) {
@@ -197,7 +247,7 @@ export function getQualitySignals(
     };
   }
 
-  // 6. Update caches
+  // 7. Update caches
   memoryCache = { fetchedAt: Date.now(), since, result: miner.result };
   saveFileCache(since, miner.result);
 
