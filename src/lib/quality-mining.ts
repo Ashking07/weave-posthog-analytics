@@ -23,30 +23,31 @@ export interface CachedQuality {
 }
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const REPO_URL = "https://github.com/PostHog/posthog";
-const CACHE_KEY = "posthog-quality-v1";
 
-// In-memory cache
-let memoryCache: CachedQuality | null = null;
+// In-memory cache keyed by "since:repo"
+const memoryCache = new Map<string, CachedQuality>();
 
-function getRepoPath(): string {
-  return path.join(os.tmpdir(), "posthog-analytics-repo");
+function getRepoPath(repo: string): string {
+  const slug = repo.replace(/\//g, "-");
+  return path.join(os.tmpdir(), `posthog-analytics-repo-${slug}`);
 }
 
-function getCachePath(): string {
-  return path.join(os.tmpdir(), "posthog-quality-cache.json");
+function getCachePath(repo: string): string {
+  const slug = repo.replace(/\//g, "-");
+  return path.join(os.tmpdir(), `posthog-quality-cache-${slug}.json`);
 }
 
 /** Ensure repo is cloned (shallow since cutoff). */
-function ensureRepoCloned(sinceDate: string): { ok: boolean; error?: string } {
-  const repoPath = getRepoPath();
+function ensureRepoCloned(sinceDate: string, repo: string): { ok: boolean; error?: string } {
+  const repoUrl = `https://github.com/${repo}`;
+  const repoPath = getRepoPath(repo);
   if (fs.existsSync(path.join(repoPath, ".git"))) {
     return { ok: true };
   }
   try {
     fs.mkdirSync(path.dirname(repoPath), { recursive: true });
     execSync(
-      `git clone --shallow-since=${sinceDate} --single-branch ${REPO_URL} "${repoPath}"`,
+      `git clone --shallow-since=${sinceDate} --single-branch ${repoUrl} "${repoPath}"`,
       {
         timeout: 120_000,
         stdio: "pipe",
@@ -151,8 +152,8 @@ async function fetchArtifact(
 }
 
 /** Load from file cache if valid. */
-function loadFileCache(since: string): QualityResult | null {
-  const cachePath = getCachePath();
+function loadFileCache(since: string, repo: string): QualityResult | null {
+  const cachePath = getCachePath(repo);
   try {
     const raw = fs.readFileSync(cachePath, "utf-8");
     const cached = JSON.parse(raw) as CachedQuality;
@@ -165,9 +166,9 @@ function loadFileCache(since: string): QualityResult | null {
 }
 
 /** Save to file cache. */
-function saveFileCache(since: string, result: QualityResult): void {
+function saveFileCache(since: string, repo: string, result: QualityResult): void {
   try {
-    const cachePath = getCachePath();
+    const cachePath = getCachePath(repo);
     const data: CachedQuality = {
       fetchedAt: Date.now(),
       since,
@@ -187,21 +188,21 @@ function saveFileCache(since: string, result: QualityResult): void {
 export async function getQualitySignals(
   mergeShas: string[],
   sinceDate: string,
+  repo = "PostHog/posthog",
 ): Promise<{ result: QualityResult | null; warning?: string }> {
   const since = sinceDate;
+  const cacheKey = `${since}:${repo}`;
 
   // 1. Check in-memory cache
-  if (memoryCache && memoryCache.since === since) {
-    const age = Date.now() - memoryCache.fetchedAt;
-    if (age < CACHE_TTL_MS) {
-      return { result: memoryCache.result };
-    }
+  const cached = memoryCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return { result: cached.result };
   }
 
   // 2. Check file cache
-  const fileResult = loadFileCache(since);
+  const fileResult = loadFileCache(since, repo);
   if (fileResult) {
-    memoryCache = { fetchedAt: Date.now(), since, result: fileResult };
+    memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result: fileResult });
     return { result: fileResult };
   }
 
@@ -210,8 +211,8 @@ export async function getQualitySignals(
   if (artifactUrl) {
     const artifact = await fetchArtifact(artifactUrl);
     if (artifact.ok && artifact.result) {
-      memoryCache = { fetchedAt: Date.now(), since, result: artifact.result };
-      saveFileCache(since, artifact.result);
+      memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result: artifact.result });
+      saveFileCache(since, repo, artifact.result);
       return { result: artifact.result };
     }
     return {
@@ -223,13 +224,11 @@ export async function getQualitySignals(
   // 4. Filter to unique SHAs (local mining fallback)
   const uniqueShas = [...new Set(mergeShas)].filter(Boolean);
   if (uniqueShas.length === 0) {
-    return {
-      result: { touchedTests: {} },
-    };
+    return { result: { touchedTests: {} } };
   }
 
   // 5. Clone repo if needed
-  const clone = ensureRepoCloned(sinceDate);
+  const clone = ensureRepoCloned(sinceDate, repo);
   if (!clone.ok) {
     return {
       result: null,
@@ -238,7 +237,7 @@ export async function getQualitySignals(
   }
 
   // 6. Run miner
-  const repoPath = getRepoPath();
+  const repoPath = getRepoPath(repo);
   const miner = runMiner(repoPath, sinceDate, uniqueShas);
   if (!miner.ok || !miner.result) {
     return {
@@ -248,8 +247,8 @@ export async function getQualitySignals(
   }
 
   // 7. Update caches
-  memoryCache = { fetchedAt: Date.now(), since, result: miner.result };
-  saveFileCache(since, miner.result);
+  memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result: miner.result });
+  saveFileCache(since, repo, miner.result);
 
   return { result: miner.result };
 }
