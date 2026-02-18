@@ -10,10 +10,14 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(10, Math.max(1, parseInt(searchParams.get("limit") ?? "5", 10)));
-  const token =
-    req.headers.get("x-github-token") ??
-    searchParams.get("token") ??
-    process.env.GITHUB_TOKEN;
+  // Token only from header (never URL – query params can end up in logs/Referer)
+  const headerToken = req.headers.get("x-github-token");
+  const envToken = process.env.GITHUB_TOKEN;
+  const token = headerToken ?? envToken;
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[repos/search] Token source:", headerToken ? "user (X-GitHub-Token header)" : envToken ? "server (GITHUB_TOKEN env)" : "none");
+  }
 
   if (!token) {
     return NextResponse.json(

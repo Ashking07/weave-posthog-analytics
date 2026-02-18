@@ -146,7 +146,7 @@ export function RepoSearchBar({
 
       {open && results.length > 0 && (
         <ul
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+          className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-72 overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
           role="listbox"
         >
           {results.map((r, i) => (

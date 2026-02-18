@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar, Card } from "@/components/ui";
 import {
   BreakdownBar,
@@ -9,6 +9,7 @@ import {
   RepoSearchBar,
   ScoreChart,
 } from "@/components/dashboard";
+import { useGitHubToken } from "@/hooks/useGitHubToken";
 import { useImpactData } from "@/hooks/useImpactData";
 import type { Engineer, RepoSearchResult } from "@/types";
 import { getMix, relativeTime, formatMedianMerge } from "@/utils/format";
@@ -22,7 +23,7 @@ const DEFAULT_REPO = "PostHog/posthog";
 export default function Home() {
   const [repo, setRepo] = useState(DEFAULT_REPO);
   const [topLimit, setTopLimit] = useState<5 | 10>(5);
-  const [userToken, setUserToken] = useState<string | null>(null);
+  const [userToken, setUserToken] = useGitHubToken();
   const [showTokenInput, setShowTokenInput] = useState(false);
 
   const { data, error, loading } = useImpactData({
@@ -32,6 +33,11 @@ export default function Home() {
   });
 
   const [selected, setSelected] = useState<Engineer | null>(null);
+
+  // Auto-show token input when API fails due to missing token
+  useEffect(() => {
+    if (error && /token|GITHUB|401|403/i.test(error)) setShowTokenInput(true);
+  }, [error]);
 
   const handleRepoSelect = (r: RepoSearchResult) => {
     setRepo(r.full_name);
@@ -102,7 +108,20 @@ export default function Home() {
         <div className="flex flex-1 items-center justify-center">
           <Card className="max-w-md border-red-500/20 bg-red-500/5 p-6 text-center">
             <p className="mb-1 text-sm font-semibold text-red-400">Failed to load</p>
-            <p className="text-xs text-red-400/80">{error ?? "Unknown error"}</p>
+            <p className="text-xs text-red-400/80">
+              {/401|Bad credentials/i.test(error ?? "")
+                ? "GitHub token is invalid or expired. Clear it and enter a new token."
+                : error ?? "Unknown error"}
+            </p>
+            {/401|Bad credentials/i.test(error ?? "") && userToken && (
+              <button
+                type="button"
+                onClick={() => setUserToken(null)}
+                className="mt-3 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
+              >
+                Clear token & enter new one
+              </button>
+            )}
           </Card>
         </div>
       </div>
@@ -306,8 +325,19 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex flex-col gap-3">
-              <Card className="flex flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 dark:border-zinc-700/50">
+            <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+              {selected && (
+                <DetailPanel
+                  engineer={selected}
+                  insight={
+                    data.insights
+                      ? data.insights[selected.login] ?? data.insights[selected.login.toLowerCase()]
+                      : null
+                  }
+                  onClose={() => setSelected(null)}
+                />
+              )}
+              <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 dark:border-zinc-700/50">
                 <h3 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                   Total Scores
                 </h3>
@@ -321,18 +351,6 @@ export default function Home() {
                   />
                 </div>
               </Card>
-
-              {selected && (
-                <DetailPanel
-                  engineer={selected}
-                  insight={
-                    data.insights
-                      ? data.insights[selected.login] ?? data.insights[selected.login.toLowerCase()]
-                      : null
-                  }
-                  onClose={() => setSelected(null)}
-                />
-              )}
             </div>
           </div>
         </div>
@@ -357,7 +375,7 @@ function Header({
   setUserToken: (v: string | null) => void;
 }) {
   return (
-    <header className="flex-shrink-0 border-b border-zinc-200 bg-white px-6 py-3 backdrop-blur-sm transition-colors duration-200 dark:border-zinc-800/60 dark:bg-zinc-900/30">
+    <header className="relative z-20 flex-shrink-0 border-b border-zinc-200 bg-white px-6 py-3 backdrop-blur-sm transition-colors duration-200 dark:border-zinc-800/60 dark:bg-zinc-900/30">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <h1 className="shrink-0 bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
@@ -409,7 +427,7 @@ function AdvancedSection({
       {showTokenInput && (
         <input
           type="password"
-          placeholder="GitHub token (optional)"
+          placeholder="ghp_... (persisted in browser)"
           value={userToken ?? ""}
           onChange={(e) => setUserToken(e.target.value.trim() || null)}
           className="max-w-48 rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"

@@ -20,6 +20,20 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Analytics (unique visitors)
+
+Track how many unique users visit your site with [PostHog](https://posthog.com):
+
+1. Sign up at [app.posthog.com](https://app.posthog.com) (free tier available)
+2. Copy your project API key from **Project Settings**
+3. Add to `.env.local`:
+   ```
+   NEXT_PUBLIC_POSTHOG_KEY=phc_your_project_key
+   NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+   ```
+
+**How to see unique users:** Log into [PostHog](https://app.posthog.com) → **Insights** → create a "Unique users" or "Weekly active users" chart. PostHog can also send [weekly email digests](https://posthog.com/docs/product-setup/email-digests) – enable in Project Settings.
+
 ## Quality Signals (test-touch)
 
 The dashboard shows a heuristic quality signal (test-touch ratio) for merged PRs. This requires:

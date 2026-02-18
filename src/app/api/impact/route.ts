@@ -16,14 +16,18 @@ export async function GET(req: Request) {
   const repo = searchParams.get("repo")?.trim() || DEFAULT_REPO;
   const topParam = searchParams.get("top");
   const topLimit = topParam === "10" ? 10 : 5;
-  const token =
-    req.headers.get("x-github-token") ??
-    searchParams.get("token") ??
-    process.env.GITHUB_TOKEN;
+  // Token only from header (never URL – query params can end up in logs/Referer)
+  const headerToken = req.headers.get("x-github-token");
+  const envToken = process.env.GITHUB_TOKEN;
+  const token = headerToken ?? envToken;
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[impact] Token source:", headerToken ? "user (X-GitHub-Token header)" : envToken ? "server (GITHUB_TOKEN env)" : "none");
+  }
 
   if (!token) {
     return NextResponse.json(
-      { error: "GITHUB_TOKEN required. Set env or pass X-GitHub-Token header / token param." },
+      { error: "GITHUB_TOKEN required. Set env or pass X-GitHub-Token header." },
       { status: 500 },
     );
   }
