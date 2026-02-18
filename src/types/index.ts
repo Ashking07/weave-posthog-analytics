@@ -59,6 +59,7 @@ export interface Engineer {
   merged_prs: number;
   reviews_given: number;
   medianMergeDays: number;
+  medianPrSize: number; // median additions+deletions across their PRs
   quality: QualitySignals | null;
   topPRs: TopPR[];
 }

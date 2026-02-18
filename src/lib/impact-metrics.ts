@@ -106,6 +106,9 @@ export function computeMetrics(
     });
     const medianMergeDays = median(mergeDays);
 
+    const prSizes = data.prs.map((pr) => pr.additions + pr.deletions);
+    const medianPrSize = median(prSizes);
+
     const topPRs: TopPR[] = [...data.prs]
       .sort((a, b) => new Date(b.mergedAt).getTime() - new Date(a.mergedAt).getTime())
       .slice(0, 3)
@@ -132,6 +135,7 @@ export function computeMetrics(
       merged_prs,
       reviews_given: data.reviewsGiven,
       medianMergeDays,
+      medianPrSize: Math.round(medianPrSize),
       quality,
       topPRs,
     });

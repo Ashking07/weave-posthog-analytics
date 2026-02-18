@@ -27,6 +27,11 @@ export function formatMedianMerge(days: number): string {
   return `${days.toFixed(1)}d`;
 }
 
+export function formatPrSize(lines: number): string {
+  if (lines < 1000) return `~${lines} lines`;
+  return `~${(lines / 1000).toFixed(1)}k lines`;
+}
+
 export type MixLabel = "Delivery-heavy" | "Review-heavy" | "Balanced";
 
 export interface MixInfo {
