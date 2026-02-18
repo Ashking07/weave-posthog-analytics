@@ -63,6 +63,12 @@ export function RepoSearchBar({
       setOpen(false);
       return;
     }
+    // Don't search or reopen when query matches value (user just selected a suggestion)
+    if (query === value) {
+      setOpen(false);
+      setResults([]);
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       search(query);
       setOpen(true);
@@ -70,7 +76,7 @@ export function RepoSearchBar({
     return () => {
       if (debounceRef.current != null) clearTimeout(debounceRef.current);
     };
-  }, [query, search]);
+  }, [query, search, value]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -155,11 +161,14 @@ export function RepoSearchBar({
               role="option"
               aria-selected={i === focusedIndex}
               onMouseEnter={() => setFocusedIndex(i)}
-              onClick={() => {
-                onSelect(r);
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 setOpen(false);
+                setResults([]);
                 setQuery(r.full_name);
                 setIsSearching(false);
+                onSelect(r);
                 onChange?.(r.full_name);
               }}
               className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors ${

@@ -34,6 +34,17 @@ export default function Home() {
 
   const [selected, setSelected] = useState<Engineer | null>(null);
 
+  // Client-side paced progress: advance every 2s so user sees steady movement
+  const [displayStepIndex, setDisplayStepIndex] = useState(0);
+  useEffect(() => {
+    if (!loading) {
+      setDisplayStepIndex(0);
+      return;
+    }
+    const id = setInterval(() => setDisplayStepIndex((i) => Math.min(i + 1, 3)), 2000);
+    return () => clearInterval(id);
+  }, [loading]);
+
   // Auto-show token input when API fails due to missing token
   useEffect(() => {
     if (error && /token|GITHUB|401|403/i.test(error)) setShowTokenInput(true);
@@ -85,9 +96,39 @@ export default function Home() {
           setUserToken={setUserToken}
         />
         <div className="flex flex-1 items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-violet-400" />
-            <p className="text-sm text-zinc-400">Loading {repo} analytics…</p>
+          <div className="flex flex-col items-center gap-6">
+            <p className="text-sm font-medium text-zinc-300">Analyzing {repo}</p>
+            <div className="flex flex-col gap-3">
+              {[
+                { id: "fetch_prs", label: "Fetching merged PRs from GitHub…" },
+                { id: "quality", label: "Analyzing test coverage…" },
+                { id: "metrics", label: "Computing impact metrics…" },
+                { id: "insights", label: "Generating AI insights…" },
+              ].map((step, stepIdx) => {
+                const isDone = stepIdx < displayStepIndex;
+                const isCurrent = stepIdx === displayStepIndex;
+                const isPending = stepIdx > displayStepIndex;
+                return (
+                  <div
+                    key={step.id}
+                    className={`flex items-center gap-3 text-sm transition-colors ${
+                      isCurrent ? "text-violet-300" : isPending ? "text-zinc-500" : "text-zinc-500"
+                    }`}
+                  >
+                    {isDone ? (
+                      <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : isCurrent ? (
+                      <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-violet-400" />
+                    ) : (
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-600" aria-hidden />
+                    )}
+                    <span>{step.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
