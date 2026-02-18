@@ -30,16 +30,17 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const CACHE_KEY = "llm-insights-v1";
 const PR_TYPE_KEYS = ["bugfix", "feature", "refactor", "infra", "docs", "test", "other"];
 
-// In-memory cache
-let memoryCache: { fetchedAt: number; since: string; result: Record<string, EngineerInsight> } | null = null;
+// In-memory cache keyed by "since:repo"
+const memoryCache = new Map<string, { fetchedAt: number; since: string; result: Record<string, EngineerInsight> }>();
 
-function getCachePath(): string {
-  return path.join(os.tmpdir(), "posthog-llm-insights-cache.json");
+function getCachePath(repo: string): string {
+  const slug = repo.replace(/\//g, "-");
+  return path.join(os.tmpdir(), `posthog-llm-insights-cache-${slug}.json`);
 }
 
-function loadFileCache(since: string): Record<string, EngineerInsight> | null {
+function loadFileCache(since: string, repo: string): Record<string, EngineerInsight> | null {
   try {
-    const raw = fs.readFileSync(getCachePath(), "utf-8");
+    const raw = fs.readFileSync(getCachePath(repo), "utf-8");
     const cached = JSON.parse(raw) as {
       fetchedAt: number;
       since: string;
@@ -53,10 +54,10 @@ function loadFileCache(since: string): Record<string, EngineerInsight> | null {
   }
 }
 
-function saveFileCache(since: string, result: Record<string, EngineerInsight>): void {
+function saveFileCache(since: string, repo: string, result: Record<string, EngineerInsight>): void {
   try {
     fs.writeFileSync(
-      getCachePath(),
+      getCachePath(repo),
       JSON.stringify({ fetchedAt: Date.now(), since, result }, null, 0),
       "utf-8",
     );
@@ -139,8 +140,9 @@ async function fetchFromOpenAI(
 export async function getInsights(
   topEngineers: EngineerForInsights[],
   since: string,
+  repo = "PostHog/posthog",
 ): Promise<Record<string, EngineerInsight> | null> {
-  const key = `${CACHE_KEY}:${since}`;
+  const cacheKey = `${CACHE_KEY}:${since}:${repo}`;
   const engineers = topEngineers.slice(0, 5);
   if (engineers.length === 0) return null;
 
@@ -148,16 +150,15 @@ export async function getInsights(
   if (!apiKey) return null;
 
   // 1. In-memory cache
-  if (memoryCache && memoryCache.since === since) {
-    if (Date.now() - memoryCache.fetchedAt < CACHE_TTL_MS) {
-      return memoryCache.result;
-    }
+  const cached = memoryCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.result;
   }
 
   // 2. File cache
-  const fileResult = loadFileCache(since);
+  const fileResult = loadFileCache(since, repo);
   if (fileResult) {
-    memoryCache = { fetchedAt: Date.now(), since, result: fileResult };
+    memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result: fileResult });
     return fileResult;
   }
 
@@ -165,8 +166,8 @@ export async function getInsights(
   try {
     const result = await fetchFromOpenAI(engineers, apiKey);
     if (Object.keys(result).length === 0) return null;
-    memoryCache = { fetchedAt: Date.now(), since, result };
-    saveFileCache(since, result);
+    memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result });
+    saveFileCache(since, repo, result);
     return result;
   } catch (err) {
     console.error("LLM insights error:", err instanceof Error ? err.message : err);
