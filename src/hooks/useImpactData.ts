@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import type { ImpactResponse } from "@/types";
 
+const CACHE_KEY_PREFIX = "oss-impact-cache-v1";
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
 export interface UseImpactDataOptions {
   repo: string;
   top: 5 | 10;
@@ -19,6 +22,35 @@ export interface LoadingProgress {
   completedSteps: string[];
 }
 
+function getCacheKey(repo: string, top: 5 | 10): string {
+  return `${CACHE_KEY_PREFIX}:${repo}:${top}`;
+}
+
+function loadFromCache(repo: string, top: 5 | 10): ImpactResponse | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(getCacheKey(repo, top));
+    if (!raw) return null;
+    const { fetchedAt, data } = JSON.parse(raw) as { fetchedAt: number; data: ImpactResponse };
+    if (!data?.top || Date.now() - fetchedAt > CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function saveToCache(repo: string, top: 5 | 10, data: ImpactResponse): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      getCacheKey(repo, top),
+      JSON.stringify({ fetchedAt: Date.now(), data }),
+    );
+  } catch {
+    // Ignore quota / storage errors
+  }
+}
+
 export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
   const [data, setData] = useState<ImpactResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +63,17 @@ export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
       setLoadingProgress({ currentStep: null, completedSteps: [] });
       return;
     }
-    setLoading(true);
-    setError(null);
+
+    // 1. Try cache first – show immediately if valid
+    const cached = loadFromCache(repo, top);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError(null);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     setLoadingProgress({ currentStep: { id: "fetch_prs", label: "Starting…" }, completedSteps: [] });
 
     const params = new URLSearchParams({ repo, top: String(top) });
@@ -73,8 +114,14 @@ export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
                   currentStep: p.currentStep?.id === msg.id ? null : p.currentStep,
                   completedSteps: p.completedSteps.includes(msg.id!) ? p.completedSteps : [...p.completedSteps, msg.id!],
                 }));
+              } else if (msg.type === "partial" && msg.data) {
+                const payload = msg.data as ImpactResponse;
+                setData(payload);
+                if (!cached) setLoading(false);
               } else if (msg.type === "done" && msg.data) {
-                setData(msg.data as ImpactResponse);
+                const payload = msg.data as ImpactResponse;
+                setData(payload);
+                saveToCache(repo, top, payload);
               } else if (msg.type === "error" && msg.error) {
                 throw new Error(msg.error);
               }
@@ -85,7 +132,10 @@ export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
           }
         }
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setError((e as Error).message);
+        if ((e as Error).name !== "AbortError") {
+          if (!cached) setError((e as Error).message);
+          // If we had cache, keep showing it – background refresh failed silently
+        }
       } finally {
         setLoading(false);
         setLoadingProgress({ currentStep: null, completedSteps: [] });

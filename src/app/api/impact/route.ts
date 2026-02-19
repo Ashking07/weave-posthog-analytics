@@ -8,7 +8,7 @@ import { fetchMergedPRs } from "@/lib/github";
 import { sinceDate, computeMetrics, WINDOW_DAYS } from "@/lib/impact-metrics";
 import { getInsights } from "@/lib/llm-insights";
 
-const DEFAULT_REPO = "PostHog/posthog";
+const DEFAULT_REPO = "facebook/react";
 
 function line(obj: object): string {
   return JSON.stringify(obj) + "\n";
@@ -51,18 +51,31 @@ export async function GET(req: Request) {
         const top = all.slice(0, topLimit);
         controller.enqueue(encoder.encode(line( { type: "step_done", id: "metrics" })));
 
+        // Send partial result immediately so user sees table ~5–10s faster
+        controller.enqueue(encoder.encode(line( {
+          type: "partial",
+          data: {
+            generatedAt: new Date().toISOString(),
+            windowDays: WINDOW_DAYS,
+            repo,
+            top,
+          },
+        })));
+
         controller.enqueue(encoder.encode(line( { type: "step_start", id: "insights", label: "Generating AI insights…" })));
         const insights = await getInsights(top, since, repo);
         controller.enqueue(encoder.encode(line( { type: "step_done", id: "insights" })));
 
-        const result = {
-          generatedAt: new Date().toISOString(),
-          windowDays: WINDOW_DAYS,
-          repo,
-          top,
-          insights: insights ?? undefined,
-        };
-        controller.enqueue(encoder.encode(line( { type: "done", data: result })));
+        controller.enqueue(encoder.encode(line( {
+          type: "done",
+          data: {
+            generatedAt: new Date().toISOString(),
+            windowDays: WINDOW_DAYS,
+            repo,
+            top,
+            insights: insights ?? undefined,
+          },
+        })));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Impact API error:", message);
