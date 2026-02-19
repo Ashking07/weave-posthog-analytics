@@ -1,13 +1,12 @@
 /**
- * Impact API route – orchestrates GitHub fetch, quality mining, and LLM insights.
+ * Impact API route – orchestrates GitHub fetch, metrics, and LLM insights.
  * Streams progress steps (NDJSON) then final result.
  * Query params: repo (owner/name), top (5|10), token (optional user token)
  */
 
-import { fetchMergedPRs, isBot } from "@/lib/github";
+import { fetchMergedPRs } from "@/lib/github";
 import { sinceDate, computeMetrics, WINDOW_DAYS } from "@/lib/impact-metrics";
 import { getInsights } from "@/lib/llm-insights";
-import { getQualitySignals } from "@/lib/quality-mining";
 
 const DEFAULT_REPO = "PostHog/posthog";
 
@@ -47,20 +46,8 @@ export async function GET(req: Request) {
         const prs = await fetchMergedPRs(token, since, repo);
         controller.enqueue(encoder.encode(line( { type: "step_done", id: "fetch_prs" })));
 
-        const mergeShas: string[] = [];
-        for (const pr of prs) {
-          if (pr.author?.login && !isBot(pr.author.login) && pr.mergeCommit?.oid) {
-            mergeShas.push(pr.mergeCommit.oid);
-          }
-        }
-
-        controller.enqueue(encoder.encode(line( { type: "step_start", id: "quality", label: "Analyzing test coverage…" })));
-        const { result: qualityResult, warning: qualityWarning } =
-          await getQualitySignals(mergeShas, since, repo);
-        controller.enqueue(encoder.encode(line( { type: "step_done", id: "quality" })));
-
         controller.enqueue(encoder.encode(line( { type: "step_start", id: "metrics", label: "Computing impact metrics…" })));
-        const all = computeMetrics(prs, windowStart, qualityResult ?? null);
+        const all = computeMetrics(prs, windowStart);
         const top = all.slice(0, topLimit);
         controller.enqueue(encoder.encode(line( { type: "step_done", id: "metrics" })));
 
@@ -72,7 +59,6 @@ export async function GET(req: Request) {
           generatedAt: new Date().toISOString(),
           windowDays: WINDOW_DAYS,
           repo,
-          qualityWarning: qualityWarning ?? undefined,
           top,
           insights: insights ?? undefined,
         };

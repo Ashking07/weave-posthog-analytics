@@ -34,15 +34,6 @@ Track how many unique users visit your site with [PostHog](https://posthog.com):
 
 **How to see unique users:** Log into [PostHog](https://app.posthog.com) → **Insights** → create a "Unique users" or "Weekly active users" chart. PostHog can also send [weekly email digests](https://posthog.com/docs/product-setup/email-digests) – enable in Project Settings.
 
-## Quality Signals (test-touch)
-
-The dashboard shows a heuristic quality signal (test-touch ratio) for merged PRs. This requires:
-
-1. **Python 3**
-2. **Git** (for cloning the PostHog repo)
-
-Quality mining runs on `/api/impact` and caches results for 6 hours (in-memory + optional JSON file in `os.tmpdir()`). If Python/git are unavailable (e.g. on Vercel), the API degrades gracefully and quality signals are omitted with a warning.
-
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
