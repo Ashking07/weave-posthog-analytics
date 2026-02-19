@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PostHog Engineering Impact",
+  title: "OSS Engineering Impact",
   description: "Engineering impact dashboard for PostHog/posthog",
 };
 
