@@ -14,7 +14,7 @@ import { useImpactData } from "@/hooks/useImpactData";
 import type { Engineer, RepoSearchResult } from "@/types";
 import { getMix, relativeTime, formatMedianMerge } from "@/utils/format";
 
-const DEFAULT_REPO = "PostHog/posthog";
+const DEFAULT_REPO = "facebook/react";
 
 // ---------------------------------------------------------------------------
 // Page
