@@ -241,7 +241,7 @@ export default function Home() {
           </p>
 
           <div className="grid min-h-0 flex-1 grid-cols-[1fr_310px] gap-4">
-            <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            <div className="scroll-no-bar flex min-h-0 flex-col gap-3 overflow-y-auto">
               <Card className="flex h-[280px] flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/50 dark:border-zinc-700/50">
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   <table className="w-full text-sm">
@@ -361,7 +361,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            <div className="scroll-no-bar flex min-h-0 flex-col gap-3 overflow-y-auto">
               {selected && (
                 <DetailPanel
                   engineer={selected}
@@ -377,7 +377,7 @@ export default function Home() {
                 <h3 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                   Total Scores
                 </h3>
-                <div className="h-[200px] min-h-0 overflow-y-auto">
+                <div className="scroll-no-bar h-[200px] min-h-0 overflow-y-auto">
                   <ScoreChart
                     engineers={top}
                     selectedLogin={selected?.login ?? null}

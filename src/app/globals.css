@@ -25,3 +25,12 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Hide scrollbars – content still scrollable via wheel/trackpad */
+.scroll-no-bar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-no-bar::-webkit-scrollbar {
+  display: none;
+}
