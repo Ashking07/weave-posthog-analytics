@@ -6,8 +6,8 @@ import type { PRNode, SearchResult } from "@/types";
 
 const GITHUB_GQL = "https://api.github.com/graphql";
 export const BOT_RE = /(dependabot|github-actions|renovate|bot|app$|apps$)/i;
-export const MAX_PRS = 300;
-export const PAGE_SIZE = 50;
+export const MAX_PRS = 200;
+export const PAGE_SIZE = 100;
 
 const QUERY = `
 query MergedPRs($searchQuery: String!, $first: Int!, $after: String) {
