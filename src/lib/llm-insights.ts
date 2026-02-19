@@ -18,7 +18,6 @@ export interface EngineerForInsights {
   merged_prs: number;
   reviews_given: number;
   topPRs: { title: string }[];
-  quality?: { test_touch_ratio: number | null } | null;
 }
 
 export interface EngineerInsight {
@@ -92,7 +91,6 @@ async function fetchFromOpenAI(
     merged_prs: e.merged_prs,
     reviews_given: e.reviews_given,
     top_pr_titles: e.topPRs.slice(0, 3).map((p) => p.title),
-    test_touch_ratio: e.quality?.test_touch_ratio ?? null,
   }));
 
   const client = new OpenAI({ apiKey });
@@ -101,7 +99,7 @@ async function fetchFromOpenAI(
     messages: [
       {
         role: "system",
-        content: `You are a concise analytics assistant. Reply with a single JSON object only, no markdown or explanation. Keys are engineer logins (lowercase). Each value: { "summary": string (<=240 chars, 1-2 sentences: "Why impactful" from PR titles and counts), "pr_types": { "bugfix": n, "feature": n, "refactor": n, "infra": n, "docs": n, "test": n, "other": n } }. Classify each PR title into exactly one type. Use 0 for missing types.`,
+        content: `You are a concise analytics assistant. Reply with a single JSON object only, no markdown or explanation. Keys are engineer logins (lowercase). Each value: { "summary": string (<=240 chars, 1-2 sentences on why impactful from PR titles and counts), "pr_types": { "bugfix": n, "feature": n, "refactor": n, "infra": n, "docs": n, "test": n, "other": n } }. Classify each PR title into exactly one type. Use 0 for missing types.`,
       },
       {
         role: "user",
@@ -132,8 +130,11 @@ async function fetchFromOpenAI(
   return result;
 }
 
+const CHUNK_SIZE = 5;
+
 /**
- * Get LLM insights for top 5 engineers.
+ * Get LLM insights for top engineers (5 or 10).
+ * Fetches in chunks of 5. Top 5 = 1 request, Top 10 = 2 requests.
  * Returns null if OPENAI_API_KEY is missing or on failure.
  * Caches for 6 hours (in-memory + file).
  */
@@ -143,34 +144,46 @@ export async function getInsights(
   repo = "PostHog/posthog",
 ): Promise<Record<string, EngineerInsight> | null> {
   const cacheKey = `${CACHE_KEY}:${since}:${repo}`;
-  const engineers = topEngineers.slice(0, 5);
-  if (engineers.length === 0) return null;
+  if (topEngineers.length === 0) return null;
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  // 1. In-memory cache
-  const cached = memoryCache.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.result;
+  // 1. Load existing cache (may be empty or partial from prior Top 5 / Top 10)
+  let result: Record<string, EngineerInsight> = {};
+  const memoryEntry = memoryCache.get(cacheKey);
+  if (memoryEntry && Date.now() - memoryEntry.fetchedAt < CACHE_TTL_MS) {
+    result = { ...memoryEntry.result };
+  } else {
+    const fileResult = loadFileCache(since, repo);
+    if (fileResult) result = { ...fileResult };
   }
 
-  // 2. File cache
-  const fileResult = loadFileCache(since, repo);
-  if (fileResult) {
-    memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result: fileResult });
-    return fileResult;
+  // 2. Split into chunks of 5, fetch only missing engineers per chunk
+  const chunks: EngineerForInsights[][] = [];
+  for (let i = 0; i < topEngineers.length; i += CHUNK_SIZE) {
+    chunks.push(topEngineers.slice(i, i + CHUNK_SIZE));
   }
 
-  // 3. Fetch from OpenAI
   try {
-    const result = await fetchFromOpenAI(engineers, apiKey);
+    for (const chunk of chunks) {
+      const missing = chunk.filter((e) => !result[e.login] && !result[e.login.toLowerCase()]);
+      if (missing.length === 0) continue;
+      const fetched = await fetchFromOpenAI(missing, apiKey);
+      Object.assign(result, fetched);
+    }
     if (Object.keys(result).length === 0) return null;
+
+    // 3. Update cache and return subset for requested engineers
     memoryCache.set(cacheKey, { fetchedAt: Date.now(), since, result });
     saveFileCache(since, repo, result);
-    return result;
+
+    const requestedLogins = new Set(topEngineers.map((e) => e.login.toLowerCase()));
+    return Object.fromEntries(
+      Object.entries(result).filter(([login]) => requestedLogins.has(login.toLowerCase())),
+    );
   } catch (err) {
-    console.error("LLM insights error:", err instanceof Error ? err.message : err);
+    console.error("LLM insights error:", err instanceof Error ? err.message : String(err));
     return null;
   }
 }
