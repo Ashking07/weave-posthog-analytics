@@ -27,6 +27,13 @@ export function formatMedianMerge(days: number): string {
   return `${days.toFixed(1)}d`;
 }
 
+/** Format median review response time (hours) — e.g. "4h", "1.2d" */
+export function formatReviewResponse(hours: number): string {
+  if (hours < 24) return `${Math.round(hours)}h`;
+  const days = hours / 24;
+  return days < 1 ? `${hours.toFixed(1)}h` : `${days.toFixed(1)}d`;
+}
+
 export function formatPrSize(lines: number): string {
   if (lines < 1000) return `~${lines} lines`;
   return `~${(lines / 1000).toFixed(1)}k lines`;

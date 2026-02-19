@@ -2,7 +2,7 @@
  * Impact metrics computation from merged PR data.
  */
 
-import type { Engineer, EngineerBreakdown, PRNode, QualitySignals, TopPR } from "@/types";
+import type { Engineer, EngineerBreakdown, PRNode, TopPR } from "@/types";
 import { isBot } from "./github";
 
 export const WINDOW_DAYS = 90;
@@ -22,33 +22,12 @@ export function median(arr: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function computeQualityForEngineer(
-  prs: PRNode[],
-  quality: { touchedTests: Record<string, boolean | null> },
-): QualitySignals {
-  let prsWithTests = 0;
-  let totalFound = 0;
-  for (const pr of prs) {
-    const sha = pr.mergeCommit?.oid?.toLowerCase();
-    if (!sha) continue;
-    const touched = quality.touchedTests[sha];
-    if (touched === true || touched === false) {
-      totalFound++;
-      if (touched) prsWithTests++;
-    }
-  }
-  return {
-    prs_with_tests: prsWithTests,
-    total_prs_with_merge_commit_found: totalFound,
-    test_touch_ratio: totalFound > 0 ? Math.round((prsWithTests / totalFound) * 100) / 100 : null,
-  };
-}
+/**
+ * reviewer -> prUrl -> { prCreatedAt, minSubmittedAt } — first review time per PR per reviewer
+ */
+type ReviewerFirstReview = Map<string, Map<string, { prCreatedAt: string; minSubmittedAt: string }>>;
 
-export function computeMetrics(
-  prs: PRNode[],
-  windowStart: Date,
-  qualityResult: { touchedTests: Record<string, boolean | null> } | null,
-): Engineer[] {
+export function computeMetrics(prs: PRNode[], windowStart: Date): Engineer[] {
   const authorMap = new Map<
     string,
     {
@@ -57,6 +36,8 @@ export function computeMetrics(
       reviewsGiven: number;
     }
   >();
+
+  const reviewerFirstReview: ReviewerFirstReview = new Map();
 
   const ensure = (login: string, avatarUrl = "") => {
     if (!authorMap.has(login)) {
@@ -83,6 +64,17 @@ export function computeMetrics(
 
       const reviewerEntry = ensure(reviewer);
       reviewerEntry.reviewsGiven += 1;
+
+      // Track first review per reviewer per PR for response-time metric
+      let byPr = reviewerFirstReview.get(reviewer);
+      if (!byPr) {
+        byPr = new Map();
+        reviewerFirstReview.set(reviewer, byPr);
+      }
+      const existing = byPr.get(pr.url);
+      if (!existing || review.submittedAt < existing.minSubmittedAt) {
+        byPr.set(pr.url, { prCreatedAt: pr.createdAt, minSubmittedAt: review.submittedAt });
+      }
     }
   }
 
@@ -120,9 +112,17 @@ export function computeMetrics(
         deletions,
       }));
 
-    const quality = qualityResult
-      ? computeQualityForEngineer(data.prs, qualityResult)
-      : null;
+    // Median time from PR open to this reviewer's first review (hours)
+    const byPr = reviewerFirstReview.get(login);
+    const responseTimesHours =
+      byPr?.size
+        ? [...byPr.values()].map(
+            (v) =>
+              (new Date(v.minSubmittedAt).getTime() - new Date(v.prCreatedAt).getTime()) / 3_600_000,
+          )
+        : [];
+    const medianReviewResponseHours =
+      responseTimesHours.length > 0 ? median(responseTimesHours) : null;
 
     engineers.push({
       login,
@@ -136,7 +136,8 @@ export function computeMetrics(
       reviews_given: data.reviewsGiven,
       medianMergeDays,
       medianPrSize: Math.round(medianPrSize),
-      quality,
+      medianReviewResponseHours:
+        medianReviewResponseHours != null ? Math.round(medianReviewResponseHours * 10) / 10 : null,
       topPRs,
     });
   }

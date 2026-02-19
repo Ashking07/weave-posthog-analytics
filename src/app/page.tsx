@@ -101,9 +101,9 @@ export default function Home() {
             <div className="flex flex-col gap-3">
               {[
                 { id: "fetch_prs", label: "Fetching merged PRs from GitHub…" },
-                { id: "quality", label: "Analyzing test coverage…" },
                 { id: "metrics", label: "Computing impact metrics…" },
                 { id: "insights", label: "Generating AI insights…" },
+                { id: "preparing", label: "Preparing dashboard…" },
               ].map((step, stepIdx) => {
                 const isDone = stepIdx < displayStepIndex;
                 const isCurrent = stepIdx === displayStepIndex;
@@ -230,11 +230,6 @@ export default function Home() {
         </div>
         <span className="truncate text-xs text-zinc-500">
           {data.windowDays}d · {relativeTime(data.generatedAt)}
-          {data.qualityWarning && (
-            <span className="ml-2" title={data.qualityWarning}>
-              (quality: unavailable)
-            </span>
-          )}
         </span>
       </div>
 
