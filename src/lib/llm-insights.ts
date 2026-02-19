@@ -18,7 +18,6 @@ export interface EngineerForInsights {
   merged_prs: number;
   reviews_given: number;
   topPRs: { title: string }[];
-  quality?: { test_touch_ratio: number | null } | null;
 }
 
 export interface EngineerInsight {
@@ -92,7 +91,6 @@ async function fetchFromOpenAI(
     merged_prs: e.merged_prs,
     reviews_given: e.reviews_given,
     top_pr_titles: e.topPRs.slice(0, 3).map((p) => p.title),
-    test_touch_ratio: e.quality?.test_touch_ratio ?? null,
   }));
 
   const client = new OpenAI({ apiKey });
@@ -101,7 +99,7 @@ async function fetchFromOpenAI(
     messages: [
       {
         role: "system",
-        content: `You are a concise analytics assistant. Reply with a single JSON object only, no markdown or explanation. Keys are engineer logins (lowercase). Each value: { "summary": string (<=240 chars, 1-2 sentences: "Why impactful" from PR titles and counts), "pr_types": { "bugfix": n, "feature": n, "refactor": n, "infra": n, "docs": n, "test": n, "other": n } }. Classify each PR title into exactly one type. Use 0 for missing types.`,
+        content: `You are a concise analytics assistant. Reply with a single JSON object only, no markdown or explanation. Keys are engineer logins (lowercase). Each value: { "summary": string (<=240 chars, 1-2 sentences on why impactful from PR titles and counts), "pr_types": { "bugfix": n, "feature": n, "refactor": n, "infra": n, "docs": n, "test": n, "other": n } }. Classify each PR title into exactly one type. Use 0 for missing types.`,
       },
       {
         role: "user",
@@ -136,7 +134,7 @@ const CHUNK_SIZE = 5;
 
 /**
  * Get LLM insights for top engineers (5 or 10).
- * Fetches in chunks of 5 to keep each request small. Top 5 = 1 request, Top 10 = 2 requests.
+ * Fetches in chunks of 5. Top 5 = 1 request, Top 10 = 2 requests.
  * Returns null if OPENAI_API_KEY is missing or on failure.
  * Caches for 6 hours (in-memory + file).
  */

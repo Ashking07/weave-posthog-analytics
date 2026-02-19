@@ -2,7 +2,7 @@ import type { Engineer, EngineerInsight } from "@/types";
 import { Avatar, Card } from "@/components/ui";
 import { MixBadge } from "./MixBadge";
 import { StackedBreakdownChart } from "./StackedBreakdownChart";
-import { getMix, formatMedianMerge, formatPrSize, relativeTime } from "@/utils/format";
+import { getMix, formatMedianMerge, formatPrSize, formatReviewResponse, relativeTime } from "@/utils/format";
 
 const PR_TYPE_LABELS: Record<string, string> = {
   bugfix: "Bug fixes",
@@ -85,6 +85,9 @@ export function DetailPanel({
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
         <span>Median time to merge: {formatMedianMerge(engineer.medianMergeDays)}</span>
         <span>Median PR size: {formatPrSize(engineer.medianPrSize)}</span>
+        {engineer.medianReviewResponseHours != null && engineer.reviews_given > 0 && (
+          <span title="Time from PR open to first review">Review response: {formatReviewResponse(engineer.medianReviewResponseHours)}</span>
+        )}
       </div>
 
       {insight && Object.keys(insight.prTypes || {}).length > 0 && (
@@ -103,24 +106,6 @@ export function DetailPanel({
                 </span>
               ))}
           </div>
-        </div>
-      )}
-
-      {engineer.quality && (
-        <div className="mt-2.5">
-          <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-            Test coverage habit
-          </h4>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400">
-            {engineer.quality.prs_with_tests} of {engineer.quality.total_prs_with_merge_commit_found} PRs
-            {engineer.quality.test_touch_ratio != null && (
-              <> ({Math.round(engineer.quality.test_touch_ratio * 100)}%)</>
-            )}{" "}
-            modified test files.
-          </p>
-          <p className="mt-1 text-[10px] italic text-zinc-400 dark:text-zinc-500">
-            Rough proxy for &ldquo;updates tests with code changes.&rdquo; Not a quality guarantee.
-          </p>
         </div>
       )}
 

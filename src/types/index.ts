@@ -45,12 +45,6 @@ export interface TopPR {
   deletions: number;
 }
 
-export interface QualitySignals {
-  prs_with_tests: number;
-  total_prs_with_merge_commit_found: number;
-  test_touch_ratio: number | null;
-}
-
 export interface Engineer {
   login: string;
   avatarUrl: string;
@@ -60,7 +54,7 @@ export interface Engineer {
   reviews_given: number;
   medianMergeDays: number;
   medianPrSize: number; // median additions+deletions across their PRs
-  quality: QualitySignals | null;
+  medianReviewResponseHours: number | null; // median time from PR open to first review
   topPRs: TopPR[];
 }
 
@@ -89,7 +83,6 @@ export interface ImpactResponse {
   generatedAt: string;
   windowDays: number;
   repo?: string;
-  qualityWarning?: string;
   top: Engineer[];
   insights?: Record<string, EngineerInsight> | null;
   error?: string;
