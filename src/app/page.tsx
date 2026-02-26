@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui";
 import {
   DetailPanel,
@@ -18,6 +18,77 @@ import { relativeTime } from "@/utils/format";
 
 const DEFAULT_REPO = "facebook/react";
 
+const LOADING_STEPS = [
+  { id: "fetch_prs", label: "Fetching merged PRs…" },
+  { id: "metrics", label: "Computing metrics…" },
+  { id: "insights", label: "AI insights (optional)…" },
+] as const;
+
+const LOADING_DURATION_MS = 10_000;
+const STEP_INTERVAL_MS = LOADING_DURATION_MS / LOADING_STEPS.length;
+
+function LoadingSteps({
+  steps,
+  timerStepIndex,
+  completedSteps,
+}: {
+  steps: readonly { id: string; label: string }[];
+  timerStepIndex: number;
+  completedSteps: string[];
+}) {
+  const displayedIndex = Math.min(
+    Math.max(timerStepIndex, completedSteps.length),
+    steps.length - 1,
+  );
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col gap-3">
+        {steps.map((step, i) => {
+          const done = completedSteps.includes(step.id) || i < displayedIndex;
+          const current = i === displayedIndex && !done;
+          return (
+            <div
+              key={step.id}
+              className="flex items-center gap-3 text-sm text-zinc-500 transition-colors duration-300"
+            >
+              {done ? (
+                <svg
+                  className="h-4 w-4 shrink-0 text-emerald-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : current ? (
+                <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-400 border-t-violet-500" />
+              ) : (
+                <span
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-400"
+                  aria-hidden
+                />
+              )}
+              <span className={current ? "text-violet-600 dark:text-violet-400 font-medium" : ""}>
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="h-1 w-32 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+        <div
+          className="h-full bg-violet-500 transition-all duration-500 ease-out"
+          style={{
+            width: `${((displayedIndex + 1) / steps.length) * 100}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [repo, setRepo] = useState(DEFAULT_REPO);
   const [topLimit, setTopLimit] = useState<5 | 10>(5);
@@ -31,6 +102,31 @@ export default function Home() {
   });
 
   const [selected, setSelected] = useState<Engineer | null>(null);
+
+  // Timer-driven step progression: advance every ~3.33s over 10s total
+  const [timerStepIndex, setTimerStepIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!loading || data) {
+      setTimerStepIndex(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+    setTimerStepIndex(0);
+    timerRef.current = setInterval(() => {
+      setTimerStepIndex((i) => Math.min(i + 1, LOADING_STEPS.length - 1));
+    }, STEP_INTERVAL_MS);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [loading, data]);
 
   useEffect(() => {
     if (error && /token|GITHUB|401|403|rate/i.test(error)) setShowTokenInput(true);
@@ -87,30 +183,11 @@ export default function Home() {
             <p className="text-xs text-zinc-500">Fetching data for {repo}…</p>
           </div>
           <div className="flex flex-1 items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              {[
-                { id: "fetch_prs", label: "Fetching merged PRs…" },
-                { id: "metrics", label: "Computing metrics…" },
-                { id: "insights", label: "AI insights (optional)…" },
-              ].map((step) => {
-                const done = loadingProgress.completedSteps.includes(step.id);
-                const current = loadingProgress.currentStep?.id === step.id;
-                return (
-                  <div key={step.id} className="flex items-center gap-3 text-sm text-zinc-500">
-                    {done ? (
-                      <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : current ? (
-                      <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-400 border-t-violet-500" />
-                    ) : (
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-400" aria-hidden />
-                    )}
-                    <span className={current ? "text-violet-600 dark:text-violet-400" : ""}>{step.label}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <LoadingSteps
+              steps={LOADING_STEPS}
+              timerStepIndex={timerStepIndex}
+              completedSteps={loadingProgress.completedSteps}
+            />
           </div>
         </div>
       </div>
