@@ -20,6 +20,16 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## LLM insights (optional)
+
+To see AI-generated summaries for each contributor, add your [OpenAI API key](https://platform.openai.com/api-keys) to `.env.local`:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+Without this key, the dashboard still works but contributor insights will not be generated.
+
 ## Analytics (unique visitors)
 
 Track how many unique users visit your site with [PostHog](https://posthog.com):
