@@ -1,24 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Avatar, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 import {
-  BreakdownBar,
   DetailPanel,
-  MixBadge,
+  ExecutiveSummary,
+  LLMInsightsSection,
+  Methodology,
   RepoSearchBar,
   ScoreChart,
+  TopEngineersTable,
 } from "@/components/dashboard";
 import { useGitHubToken } from "@/hooks/useGitHubToken";
-import { useImpactData } from "@/hooks/useImpactData";
+import { useImpactData, GITHUB_PAT_URL } from "@/hooks/useImpactData";
 import type { Engineer, RepoSearchResult } from "@/types";
-import { getMix, relativeTime, formatMedianMerge } from "@/utils/format";
+import { relativeTime } from "@/utils/format";
 
 const DEFAULT_REPO = "facebook/react";
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default function Home() {
   const [repo, setRepo] = useState(DEFAULT_REPO);
@@ -26,7 +24,7 @@ export default function Home() {
   const [userToken, setUserToken] = useGitHubToken();
   const [showTokenInput, setShowTokenInput] = useState(false);
 
-  const { data, error, loading } = useImpactData({
+  const { data, error, loading, loadingProgress, retry } = useImpactData({
     repo,
     top: topLimit,
     token: userToken || undefined,
@@ -34,20 +32,8 @@ export default function Home() {
 
   const [selected, setSelected] = useState<Engineer | null>(null);
 
-  // Client-side paced progress: advance every 2s so user sees steady movement
-  const [displayStepIndex, setDisplayStepIndex] = useState(0);
   useEffect(() => {
-    if (!loading) {
-      setDisplayStepIndex(0);
-      return;
-    }
-    const id = setInterval(() => setDisplayStepIndex((i) => Math.min(i + 1, 3)), 2000);
-    return () => clearInterval(id);
-  }, [loading]);
-
-  // Auto-show token input when API fails due to missing token
-  useEffect(() => {
-    if (error && /token|GITHUB|401|403/i.test(error)) setShowTokenInput(true);
+    if (error && /token|GITHUB|401|403|rate/i.test(error)) setShowTokenInput(true);
   }, [error]);
 
   const handleRepoSelect = (r: RepoSearchResult) => {
@@ -84,9 +70,9 @@ export default function Home() {
     );
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex min-h-screen flex-col bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 font-[family-name:var(--font-geist-sans)]">
+      <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 font-[family-name:var(--font-geist-sans)]">
         <Header
           repo={repo}
           onRepoSelect={handleRepoSelect}
@@ -95,36 +81,32 @@ export default function Home() {
           setShowTokenInput={setShowTokenInput}
           setUserToken={setUserToken}
         />
-        <div className="flex flex-1 items-center justify-center">
-          <div className="flex flex-col items-center gap-6">
-            <p className="text-sm font-medium text-zinc-300">Analyzing {repo}</p>
-            <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-4 py-2">
+          <div className="flex flex-shrink-0 items-center gap-3">
+            <TopToggle value={topLimit} onChange={setTopLimit} loading />
+            <p className="text-xs text-zinc-500">Fetching data for {repo}…</p>
+          </div>
+          <div className="flex flex-1 items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
               {[
-                { id: "fetch_prs", label: "Fetching merged PRs from GitHub…" },
-                { id: "metrics", label: "Computing impact metrics…" },
-                { id: "insights", label: "Generating AI insights…" },
-                { id: "preparing", label: "Preparing dashboard…" },
-              ].map((step, stepIdx) => {
-                const isDone = stepIdx < displayStepIndex;
-                const isCurrent = stepIdx === displayStepIndex;
-                const isPending = stepIdx > displayStepIndex;
+                { id: "fetch_prs", label: "Fetching merged PRs…" },
+                { id: "metrics", label: "Computing metrics…" },
+                { id: "insights", label: "AI insights (optional)…" },
+              ].map((step) => {
+                const done = loadingProgress.completedSteps.includes(step.id);
+                const current = loadingProgress.currentStep?.id === step.id;
                 return (
-                  <div
-                    key={step.id}
-                    className={`flex items-center gap-3 text-sm transition-colors ${
-                      isCurrent ? "text-violet-300" : isPending ? "text-zinc-500" : "text-zinc-500"
-                    }`}
-                  >
-                    {isDone ? (
+                  <div key={step.id} className="flex items-center gap-3 text-sm text-zinc-500">
+                    {done ? (
                       <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                    ) : isCurrent ? (
-                      <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-violet-400" />
+                    ) : current ? (
+                      <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-400 border-t-violet-500" />
                     ) : (
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-600" aria-hidden />
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-400" aria-hidden />
                     )}
-                    <span>{step.label}</span>
+                    <span className={current ? "text-violet-600 dark:text-violet-400" : ""}>{step.label}</span>
                   </div>
                 );
               })}
@@ -135,7 +117,7 @@ export default function Home() {
     );
   }
 
-  if (error || !data) {
+  if (error && !data) {
     return (
       <div className="flex min-h-screen flex-col bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
         <Header
@@ -146,57 +128,47 @@ export default function Home() {
           setShowTokenInput={setShowTokenInput}
           setUserToken={setUserToken}
         />
-        <div className="flex flex-1 items-center justify-center">
-          <Card className="max-w-md border-red-500/20 bg-red-500/5 p-6 text-center">
+        <div className="flex flex-1 items-center justify-center px-4">
+          <Card className="max-w-md border-red-500/20 bg-red-500/5 p-5 text-center">
             <p className="mb-1 text-sm font-semibold text-red-400">Failed to load</p>
-            <p className="text-xs text-red-400/80">
-              {/401|Bad credentials/i.test(error ?? "")
-                ? "GitHub token is invalid or expired. Clear it and enter a new token."
-                : error ?? "Unknown error"}
-            </p>
-            {/401|Bad credentials/i.test(error ?? "") && userToken && (
+            <p className="text-xs text-red-400/90">{error}</p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setUserToken(null)}
-                className="mt-3 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
+                onClick={retry}
+                className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
               >
-                Clear token & enter new one
+                Retry
               </button>
-            )}
+              {(/401|Bad credentials|rate limit|token/i.test(error) || !userToken) && (
+                <a
+                  href={GITHUB_PAT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
+                >
+                  Create GitHub token
+                </a>
+              )}
+              {/401|Bad credentials/i.test(error) && userToken && (
+                <button
+                  type="button"
+                  onClick={() => setUserToken(null)}
+                  className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800"
+                >
+                  Clear token
+                </button>
+              )}
+            </div>
           </Card>
         </div>
       </div>
     );
   }
 
-  const top = data.top;
-  const totalPr = top.reduce((s, e) => s + e.breakdown.pr_points, 0);
-  const totalRev = top.reduce((s, e) => s + e.breakdown.review_points, 0);
-  const totalAll = totalPr + totalRev;
-  const summaryPrPct = totalAll > 0 ? Math.round((totalPr / totalAll) * 100) : 0;
-  const summaryRevPct = totalAll > 0 ? 100 - summaryPrPct : 0;
-  const totalMergedPrs = top.reduce((s, e) => s + e.merged_prs, 0);
-  const totalReviews = top.reduce((s, e) => s + e.reviews_given, 0);
-
-  const mixCounts = top.reduce(
-    (acc, e) => {
-      const m = getMix(e.breakdown).mix;
-      if (m === "Delivery-heavy") acc.delivery++;
-      else if (m === "Review-heavy") acc.review++;
-      else acc.balanced++;
-      return acc;
-    },
-    { delivery: 0, review: 0, balanced: 0 },
-  );
-  const mixParts: string[] = [];
-  if (mixCounts.delivery) mixParts.push(`${mixCounts.delivery} delivery-heavy`);
-  if (mixCounts.review) mixParts.push(`${mixCounts.review} review-heavy`);
-  if (mixCounts.balanced) mixParts.push(`${mixCounts.balanced} balanced`);
-
-  const insight =
-    selected && data.insights
-      ? data.insights[selected.login] ?? data.insights[selected.login.toLowerCase()]
-      : null;
+  const top = data!.top;
+  const prsCount = data!.prsCount;
+  const reviewsCount = data!.reviewsCount;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-zinc-50 font-[family-name:var(--font-geist-sans)] dark:bg-gradient-to-br dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
@@ -209,185 +181,68 @@ export default function Home() {
         setUserToken={setUserToken}
       />
 
-      <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-zinc-800/60 px-6 py-2">
-        <div className="flex items-center gap-4">
-          <TopToggle value={topLimit} onChange={setTopLimit} />
-          <div className="flex items-center gap-3 text-xs text-zinc-400">
-            <span>
-              <span className="font-mono font-semibold text-violet-400">{totalMergedPrs}</span>{" "}
-              PRs
-            </span>
-            <span className="text-zinc-300 dark:text-zinc-600">·</span>
-            <span>
-              <span className="font-mono font-semibold text-emerald-400">{totalReviews}</span>{" "}
-              reviews
-            </span>
-            <span className="text-zinc-300 dark:text-zinc-600">·</span>
-            <span>
-              <span className="font-mono font-semibold text-cyan-400">{summaryPrPct}%</span> PR share
-            </span>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-4 py-2">
+        <ExecutiveSummary
+          engineers={top}
+          prsCount={prsCount}
+          reviewsCount={reviewsCount}
+          windowDays={data!.windowDays}
+        />
+        <div className="flex flex-shrink-0 items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <TopToggle value={topLimit} onChange={setTopLimit} loading={loading} />
+            <p className="text-xs text-zinc-500">
+              {prsCount != null && reviewsCount != null ? (
+                <>
+                  Analyzed <strong className="font-mono text-zinc-700 dark:text-zinc-300">{prsCount}</strong> merged PRs and{" "}
+                  <strong className="font-mono text-zinc-700 dark:text-zinc-300">{reviewsCount}</strong> reviews
+                </>
+              ) : (
+                "Top contributors"
+              )}{" "}
+              (last {data!.windowDays} days). Bots and review-only excluded.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Methodology />
+            <span className="text-[11px] text-zinc-500">{relativeTime(data!.generatedAt)}</span>
           </div>
         </div>
-        <span className="truncate text-xs text-zinc-500">
-          {data.windowDays}d · {relativeTime(data.generatedAt)}
-        </span>
-      </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full max-w-7xl flex-col gap-3 px-6 py-3.5">
-          <p className="flex-shrink-0 text-xs text-zinc-600 dark:text-zinc-500">
-            Impact: {summaryPrPct}% PRs, {summaryRevPct}% reviews.
-            {mixParts.length > 0 && ` Mix: ${mixParts.join(", ")}.`}
-          </p>
-
-          <div className="grid min-h-0 flex-1 grid-cols-[1fr_310px] gap-4">
-            <div className="scroll-no-bar flex min-h-0 flex-col gap-3 overflow-y-auto">
-              <Card className="flex h-[280px] flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/50 dark:border-zinc-700/50">
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-sm">
-                      <tr className="border-b border-zinc-800/80 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:border-zinc-700/60">
-                      <th className="w-9 py-2 pl-4 pr-1">#</th>
-                      <th className="py-2 pr-3">Engineer</th>
-                      <th className="w-16 py-2 pr-3 text-right">Score</th>
-                      <th className="w-12 py-2 pr-3 text-right">PRs</th>
-                      <th className="w-14 py-2 pr-3 text-right">Reviews</th>
-                      <th className="w-18 py-2 pr-3 text-right" title="Median time-to-merge">
-                        Med merge
-                      </th>
-                      <th className="w-24 py-2 pr-3">Mix</th>
-                      <th className="w-28 py-2 pr-4">Breakdown</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {top.map((eng, i) => {
-                      const isSelected = selected?.login === eng.login;
-                      return (
-                        <tr
-                          key={eng.login}
-                          onClick={() => setSelected(isSelected ? null : eng)}
-                          className={`cursor-pointer border-b border-zinc-100 transition-colors last:border-0 hover:bg-zinc-50 dark:border-zinc-800/40 dark:hover:bg-zinc-800/30 ${
-                            isSelected ? "bg-violet-50 dark:bg-violet-500/10" : ""
-                          }`}
-                        >
-                          <td className="py-2.5 pl-4 pr-1 text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
-                            {i + 1}
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <div className="flex items-center gap-2.5">
-                              {eng.avatarUrl ? (
-                                <Avatar src={eng.avatarUrl} alt={eng.login} size={28} />
-                              ) : (
-                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
-                                  {eng.login[0]?.toUpperCase()}
-                                </div>
-                              )}
-                              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                                {eng.login}
-                              </span>
-                              <a
-                                href={`https://github.com/${eng.login}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="shrink-0 rounded p-0.5 text-zinc-400 transition-colors hover:text-zinc-200"
-                                aria-label={`View ${eng.login} on GitHub`}
-                              >
-                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-                                </svg>
-                              </a>
-                            </div>
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-mono text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
-                            {eng.total.toFixed(1)}
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-mono text-xs tabular-nums text-zinc-500">
-                            {eng.merged_prs}
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-mono text-xs tabular-nums text-zinc-500">
-                            {eng.reviews_given}
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-mono text-xs tabular-nums text-zinc-500">
-                            {formatMedianMerge(eng.medianMergeDays)}
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <MixBadge mix={getMix(eng.breakdown).mix} />
-                          </td>
-                          <td className="py-2.5 pr-4">
-                            <BreakdownBar breakdown={eng.breakdown} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              </Card>
-
-              <Card className="border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  How the Top {topLimit} contribute
-                </h3>
-                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                  {top.map((eng) => {
-                    const info = getMix(eng.breakdown);
-                    return (
-                      <div key={eng.login} className="flex items-center gap-2 text-xs">
-                        <span className="w-24 truncate font-medium text-zinc-300" title={eng.login}>
-                          {eng.login}
-                        </span>
-                        <MixBadge mix={info.mix} />
-                        <span className="flex items-center gap-1 text-[11px]">
-                          <span className="font-mono text-violet-400">{info.prPct}%</span>
-                          <span className="text-zinc-400 dark:text-zinc-600">/</span>
-                          <span className="font-mono text-emerald-400">{info.revPct}%</span>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-
-              {insight && selected && (
-                <Card className="border-l-4 border-l-violet-500/50 border-zinc-800/80 bg-zinc-800/30 px-4 py-2.5 dark:border-zinc-700/50">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                    LLM Insight · {selected.login}
-                  </p>
-                  <blockquote className="mt-1 border-0 pl-0 text-sm italic leading-snug text-zinc-600 dark:text-zinc-300">
-                    &ldquo;{insight.summary}&rdquo;
-                  </blockquote>
-                </Card>
-              )}
-            </div>
-
-            <div className="scroll-no-bar flex min-h-0 flex-col gap-3 overflow-y-auto">
-              {selected && (
-                <DetailPanel
-                  engineer={selected}
-                  insight={
-                    data.insights
-                      ? data.insights[selected.login] ?? data.insights[selected.login.toLowerCase()]
-                      : null
-                  }
-                  onClose={() => setSelected(null)}
+        <div className="grid min-h-0 flex-1 grid-cols-[1fr_280px] gap-3">
+          <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
+            <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-200 dark:border-zinc-800/80 dark:bg-zinc-900/50">
+              <div className="max-h-[280px] min-h-0 overflow-y-auto p-2">
+                <TopEngineersTable
+                  engineers={top}
+                  selected={selected}
+                  onSelect={setSelected}
+                  prsCount={prsCount ?? undefined}
                 />
-              )}
-              <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 dark:border-zinc-700/50">
-                <h3 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  Total Scores
-                </h3>
-                <div className="scroll-no-bar h-[200px] min-h-0 overflow-y-auto">
-                  <ScoreChart
-                    engineers={top}
-                    selectedLogin={selected?.login ?? null}
-                    onSelect={(eng) =>
-                      setSelected(selected?.login === eng.login ? null : eng)
-                    }
-                  />
-                </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
+            <LLMInsightsSection selected={selected} insights={data!.insights} />
+            {loading && data && (
+              <p className="text-[11px] text-zinc-500">Updating AI insights…</p>
+            )}
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+            {selected && (
+              <DetailPanel engineer={selected} onClose={() => setSelected(null)} />
+            )}
+            <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-200 px-2 py-2 dark:border-zinc-800/80 dark:bg-zinc-900/50">
+              <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                Total Scores
+              </h3>
+              <div className="min-h-[120px]">
+                <ScoreChart
+                  engineers={top}
+                  selectedLogin={selected?.login ?? null}
+                  onSelect={(eng) => setSelected(selected?.login === eng.login ? null : eng)}
+                />
+              </div>
+            </Card>
           </div>
         </div>
       </div>
@@ -411,8 +266,8 @@ function Header({
   setUserToken: (v: string | null) => void;
 }) {
   return (
-    <header className="relative z-20 flex-shrink-0 border-b border-zinc-200 bg-white px-6 py-3 backdrop-blur-sm transition-colors duration-200 dark:border-zinc-800/60 dark:bg-zinc-900/30">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <header className="relative z-20 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-2 backdrop-blur-sm dark:border-zinc-800/60 dark:bg-zinc-900/30">
+      <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <h1 className="shrink-0 bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
             OSS Impact
@@ -461,36 +316,61 @@ function AdvancedSection({
         {showTokenInput ? "Hide token" : "GitHub token"}
       </button>
       {showTokenInput && (
-        <input
-          type="password"
-          placeholder="ghp_... (persisted in browser)"
-          value={userToken ?? ""}
-          onChange={(e) => setUserToken(e.target.value.trim() || null)}
-          className="max-w-48 rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-          autoComplete="off"
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="password"
+            placeholder="ghp_... (browser only)"
+            value={userToken ?? ""}
+            onChange={(e) => setUserToken(e.target.value.trim() || null)}
+            className="max-w-40 rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+            autoComplete="off"
+          />
+          <a
+            href={GITHUB_PAT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded px-2 py-1 text-[10px] font-medium text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+          >
+            Create token
+          </a>
+        </div>
       )}
     </div>
   );
 }
 
-function TopToggle({ value, onChange }: { value: 5 | 10; onChange: (v: 5 | 10) => void }) {
+function TopToggle({
+  value,
+  onChange,
+  loading = false,
+}: {
+  value: 5 | 10;
+  onChange: (v: 5 | 10) => void;
+  loading?: boolean;
+}) {
   return (
-    <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-800/40 p-0.5">
-      {([5, 10] as const).map((n) => (
-        <button
-          key={n}
-          type="button"
-          onClick={() => onChange(n)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-            value === n
-              ? "bg-violet-500/20 text-violet-300"
-              : "text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          Top {n}
-        </button>
-      ))}
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-800/40 p-0.5">
+        {([5, 10] as const).map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            disabled={loading}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-70 ${
+              value === n ? "bg-violet-500/20 text-violet-300" : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Top {n}
+          </button>
+        ))}
+      </div>
+      {loading && (
+        <div
+          className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-500 border-t-violet-400"
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
