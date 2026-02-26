@@ -39,6 +39,12 @@ export function formatPrSize(lines: number): string {
   return `~${(lines / 1000).toFixed(1)}k lines`;
 }
 
+/** Compact form for Substance badge: "~120" or "~1.2k" */
+export function formatPrSizeCompact(lines: number): string {
+  if (lines < 1000) return `~${lines}`;
+  return `~${(lines / 1000).toFixed(1)}k`;
+}
+
 export type MixLabel = "Delivery-heavy" | "Review-heavy" | "Balanced";
 
 export interface MixInfo {

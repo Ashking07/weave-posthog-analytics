@@ -1,6 +1,11 @@
 export { BreakdownBar } from "./BreakdownBar";
 export { DetailPanel } from "./DetailPanel";
+export { ExecutiveSummary } from "./ExecutiveSummary";
+export { LLMInsightsSection } from "./LLMInsightsSection";
+export { Methodology } from "./Methodology";
 export { MixBadge } from "./MixBadge";
 export { RepoSearchBar } from "./RepoSearchBar";
+export { ScoreBreakdownCard } from "./ScoreBreakdownCard";
 export { ScoreChart } from "./ScoreChart";
 export { StackedBreakdownChart } from "./StackedBreakdownChart";
+export { TopEngineersTable } from "./TopEngineersTable";

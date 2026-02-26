@@ -35,6 +35,10 @@ export interface SearchResult {
 export interface EngineerBreakdown {
   pr_points: number;
   review_points: number;
+  /** For transparency: merged_prs * BASE_PR */
+  pr_base_points?: number;
+  /** For transparency: Σ min(log1p(additions+deletions), COMPLEXITY_CAP) */
+  complexity_points?: number;
 }
 
 export interface TopPR {
@@ -86,4 +90,8 @@ export interface ImpactResponse {
   top: Engineer[];
   insights?: Record<string, EngineerInsight> | null;
   error?: string;
+  /** Data coverage: total merged PRs analyzed */
+  prsCount?: number;
+  /** Data coverage: total reviews analyzed (excluding bots) */
+  reviewsCount?: number;
 }
