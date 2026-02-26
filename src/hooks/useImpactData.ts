@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ImpactResponse } from "@/types";
 
-const CACHE_KEY_PREFIX = "oss-impact-cache-v1";
+const CACHE_KEY_PREFIX = "oss-impact-cache-v8";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export interface UseImpactDataOptions {
@@ -51,11 +51,19 @@ function saveToCache(repo: string, top: 5 | 10, data: ImpactResponse): void {
   }
 }
 
+const GITHUB_PAT_URL = "https://github.com/settings/tokens/new?scopes=repo&description=OSS+Impact";
+
 export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
   const [data, setData] = useState<ImpactResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress>({ currentStep: null, completedSteps: [] });
+  const [retryKey, setRetryKey] = useState(0);
+
+  const retry = () => {
+    setError(null);
+    setRetryKey((k) => k + 1);
+  };
 
   useEffect(() => {
     if (!repo) {
@@ -86,9 +94,19 @@ export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
       try {
         const res = await fetch(`/api/impact?${params}`, { headers, signal: abort.signal });
         if (!res.ok) {
-          const json = (await res.json()) as { error?: string };
+          const json = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(json.error ?? `HTTP ${res.status}`);
         }
+
+        const contentType = res.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const payload = (await res.json()) as ImpactResponse;
+          setData(payload);
+          saveToCache(repo, top, payload);
+          setLoading(false);
+          return;
+        }
+
         const reader = res.body?.getReader();
         if (!reader) throw new Error("No response body");
 
@@ -143,7 +161,9 @@ export function useImpactData({ repo, top, token }: UseImpactDataOptions) {
     })();
 
     return () => abort.abort();
-  }, [repo, top, token]);
+  }, [repo, top, token, retryKey]);
 
-  return { data, error, loading, loadingProgress };
+  return { data, error, loading, loadingProgress, retry };
 }
+
+export { GITHUB_PAT_URL };
