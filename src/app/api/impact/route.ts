@@ -8,10 +8,11 @@
 import { fetchMergedPRs } from "@/lib/github";
 import { sinceDate, computeMetrics, WINDOW_DAYS } from "@/lib/impact-metrics";
 import { getInsights } from "@/lib/llm-insights";
+import { computeDoraProxies, prNodeToDoraPR } from "@/lib/doraMetrics";
 
-const DEFAULT_REPO = "facebook/react";
+const DEFAULT_REPO = "PostHog/posthog";
 const CACHE_TTL_MS = 600 * 1000; // 10 min
-const IMPACT_CACHE_VERSION = "v9"; // Bump when LLM prompt or scoring changes
+const IMPACT_CACHE_VERSION = "v10"; // Bump when LLM prompt or scoring changes
 
 const serverCache = new Map<string, { fetchedAt: number; data: object }>();
 
@@ -83,6 +84,9 @@ export async function GET(req: Request) {
         const top = engineers.slice(0, topLimit);
         controller.enqueue(encoder.encode(line({ type: "step_done", id: "metrics" })));
 
+        const doraPrs = prs.map(prNodeToDoraPR);
+        const doraProxies = computeDoraProxies({ prs: doraPrs, windowDays: WINDOW_DAYS });
+
         const partialData = {
           generatedAt: new Date().toISOString(),
           windowDays: WINDOW_DAYS,
@@ -90,6 +94,7 @@ export async function GET(req: Request) {
           top,
           prsCount,
           reviewsCount,
+          doraProxies,
         };
         controller.enqueue(encoder.encode(line({ type: "partial", data: partialData })));
 
