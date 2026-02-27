@@ -61,17 +61,34 @@ query MergedPRs($searchQuery: String!, $first: Int!, $after: String) {
       ... on PullRequest {
         title
         url
+        body
         createdAt
         mergedAt
         mergeCommit { oid }
         additions
         deletions
         author { login avatarUrl }
+        labels(first: 10) { nodes { name } }
+        files(first: 50) { nodes { path } }
+        closingIssuesReferences(first: 10) {
+          nodes { number title url }
+        }
+        reviewThreads { totalCount }
+        comments { totalCount }
+        commits(first: 1) {
+          totalCount
+          nodes { commit { authoredDate committedDate } }
+        }
+        reactions(first: 10) {
+          totalCount
+          nodes { content }
+        }
         reviews(first: 50) {
           nodes {
             author { login }
             submittedAt
             state
+            comments { totalCount }
           }
         }
       }

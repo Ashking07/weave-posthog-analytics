@@ -3,8 +3,19 @@
  * Transparent, defensible scoring: no black box.
  */
 
-import type { Engineer, EngineerBreakdown, PRNode, TopPR } from "@/types";
+import type {
+  CommitTimeline,
+  Engineer,
+  EngineerBreakdown,
+  LinkedIssue,
+  PRClassification,
+  PRNode,
+  ReactionSummary,
+  TopPR,
+} from "@/types";
 import { isBot } from "./github";
+import { classifyPullRequest } from "./impactTaxonomy";
+import { normalizePRNode } from "./prNormalize";
 
 export const WINDOW_DAYS = 90;
 
@@ -121,13 +132,71 @@ export function computeMetrics(prs: PRNode[], windowStart: Date): ComputeMetrics
     const topPRs: TopPR[] = [...data.prs]
       .sort((a, b) => new Date(b.mergedAt).getTime() - new Date(a.mergedAt).getTime())
       .slice(0, 15)
-      .map(({ title, url, mergedAt, additions, deletions }) => ({
-        title,
-        url,
-        mergedAt,
-        additions,
-        deletions,
-      }));
+      .map((rawPr) => {
+        const pr = normalizePRNode(rawPr);
+
+        const labels = pr.labels?.nodes?.map((l) => l.name) ?? [];
+        const filePaths = pr.files?.nodes?.map((f) => f.path) ?? [];
+        const { buckets, reasons } = classifyPullRequest({
+          title: pr.title,
+          labels,
+          filePaths,
+        });
+        const classification: PRClassification = {
+          buckets: [...buckets],
+          reasons,
+        };
+
+        const linkedIssues: LinkedIssue[] =
+          pr.closingIssuesReferences?.nodes?.map((i) => ({
+            number: i.number,
+            title: i.title,
+            url: i.url,
+          })) ?? [];
+
+        const reviewCommentCount =
+          pr.reviews?.nodes?.reduce(
+            (sum, r) => sum + (r.comments?.totalCount ?? 0),
+            0,
+          ) ?? 0;
+
+        const commitNodes = pr.commits?.nodes ?? [];
+        const commitTimeline: CommitTimeline = {
+          firstCommitAt: commitNodes[0]?.commit?.authoredDate ?? null,
+          lastCommitAt:
+            commitNodes.length > 0
+              ? commitNodes[commitNodes.length - 1]?.commit?.committedDate ?? null
+              : null,
+          commitCount: pr.commits?.totalCount ?? 0,
+        };
+
+        const reactionNodes = pr.reactions?.nodes ?? [];
+        const byType: Record<string, number> = {};
+        for (const r of reactionNodes) {
+          byType[r.content] = (byType[r.content] ?? 0) + 1;
+        }
+        const reactions: ReactionSummary = {
+          totalCount: pr.reactions?.totalCount ?? 0,
+          byType,
+        };
+
+        return {
+          title: pr.title,
+          url: pr.url,
+          mergedAt: pr.mergedAt,
+          additions: pr.additions,
+          deletions: pr.deletions,
+          body: pr.body || undefined,
+          labels: labels.length > 0 ? labels : undefined,
+          filePaths: filePaths.length > 0 ? filePaths : undefined,
+          linkedIssues: linkedIssues.length > 0 ? linkedIssues : undefined,
+          reviewThreadCount: pr.reviewThreads?.totalCount ?? 0,
+          reviewCommentCount,
+          commitTimeline,
+          reactions: reactions.totalCount > 0 ? reactions : undefined,
+          classification,
+        };
+      });
 
     // Median time from PR open to this reviewer's first review (hours)
     const byPr = reviewerFirstReview.get(login);
