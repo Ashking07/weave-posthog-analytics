@@ -5,7 +5,51 @@
 import type { PRNode, SearchResult } from "@/types";
 
 const GITHUB_GQL = "https://api.github.com/graphql";
-export const BOT_RE = /(dependabot|github-actions|renovate|bot|app$|apps$)/i;
+
+/** Known bot logins that don't match regex patterns (lowercase) */
+const KNOWN_BOTS = new Set([
+  "cubic-dev-ai",
+  "devin",
+  "devin-ai-integration",
+  "openai",
+  "anthropic",
+  "tabnine",
+  "codestral",
+  "codeium",
+  "codacy",
+  "sonar",
+  "semgrep",
+  "sweep",
+  "aider",
+  "github-actions[bot]",
+  "dependabot[bot]",
+  "renovate[bot]",
+  "greptile-apps",
+]);
+
+/** Matches common GitHub bot patterns: [bot], -bot, -ai, -agent, dependabot, etc. */
+const BOT_PATTERNS = [
+  /(dependabot|github-actions|renovate|codecov|coveralls|greenkeeper|snyk|mergify|stale|imgbot|allcontributors|copilot)/i,
+  /\[bot\]/i,
+  /-bot$/i,
+  /^bot-/i,
+  /\bbot\b/i,
+  /-ai$/i, // cubic-dev-ai, etc.
+  /-agent$/i,
+  /-automation$/i,
+  /-dev-ai$/i,
+  /-integration$/i, // devin-ai-integration, etc.
+  /-ci$/i,
+  /-github$/i,
+  /-actions$/i,
+  /^.*-actions$/i,
+  /app$/i,
+  /-apps$/i, // greptile-apps, vercel-apps, etc.
+  /^apps$/i,
+  /^.*\[bot\]$/i,
+];
+
+export const BOT_RE = new RegExp(BOT_PATTERNS.map((p) => p.source).join("|"));
 export const MAX_PRS = 200;
 export const PAGE_SIZE = 100;
 
@@ -17,17 +61,34 @@ query MergedPRs($searchQuery: String!, $first: Int!, $after: String) {
       ... on PullRequest {
         title
         url
+        body
         createdAt
         mergedAt
         mergeCommit { oid }
         additions
         deletions
         author { login avatarUrl }
+        labels(first: 10) { nodes { name } }
+        files(first: 50) { nodes { path } }
+        closingIssuesReferences(first: 10) {
+          nodes { number title url }
+        }
+        reviewThreads { totalCount }
+        comments { totalCount }
+        commits(first: 1) {
+          totalCount
+          nodes { commit { authoredDate committedDate } }
+        }
+        reactions(first: 10) {
+          totalCount
+          nodes { content }
+        }
         reviews(first: 50) {
           nodes {
             author { login }
             submittedAt
             state
+            comments { totalCount }
           }
         }
       }
@@ -37,7 +98,9 @@ query MergedPRs($searchQuery: String!, $first: Int!, $after: String) {
 `;
 
 export function isBot(login: string): boolean {
-  return BOT_RE.test(login);
+  const lower = login.toLowerCase();
+  if (KNOWN_BOTS.has(lower)) return true;
+  return BOT_PATTERNS.some((re) => re.test(login));
 }
 
 async function graphql(

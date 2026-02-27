@@ -1,28 +1,74 @@
-import type { Engineer, EngineerInsight } from "@/types";
+import type { Engineer } from "@/types";
+
+function ScoreBreakdownSection({ engineer }: { engineer: Engineer }) {
+  const b = engineer.breakdown;
+  const complexity = b.complexity_points ?? b.pr_points - (engineer.merged_prs * BASE_PR);
+
+  return (
+    <div className="mt-2.5 space-y-2">
+      <h4 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+        Score breakdown
+      </h4>
+      <div className="space-y-2">
+        <div className="rounded-lg bg-violet-50/80 px-3 py-2 dark:bg-violet-500/10">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-violet-600/80 dark:text-violet-400/80">
+              Shipped (PR)
+            </span>
+            <span className="font-mono text-sm font-semibold tabular-nums text-violet-700 dark:text-violet-300">
+              {b.pr_points.toFixed(1)}
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] tabular-nums text-violet-600/70 dark:text-violet-400/70">
+            {engineer.merged_prs} × {BASE_PR} + {complexity.toFixed(1)}
+          </p>
+        </div>
+        <div className="rounded-lg bg-emerald-50/80 px-3 py-2 dark:bg-emerald-500/10">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-emerald-600/80 dark:text-emerald-400/80">
+              Unblocked (Reviews)
+            </span>
+            <span className="font-mono text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+              {b.review_points.toFixed(1)}
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] tabular-nums text-emerald-600/70 dark:text-emerald-400/70">
+            {engineer.reviews_given} × {REVIEW_WEIGHT}
+          </p>
+        </div>
+        <div className="flex items-center justify-between border-t border-zinc-200 pt-2 dark:border-zinc-700">
+          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Total</span>
+          <span className="font-mono text-base font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+            {engineer.total.toFixed(1)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 import { Avatar, Card } from "@/components/ui";
 import { MixBadge } from "./MixBadge";
+import { EngineerOutcomes } from "./ImpactOutcomes";
+import { EngineerLeadership } from "./LeadershipSection";
+import { EngineerTeamImpact } from "./TeamImpactSection";
+import { EngineerLeverage, countTeamLeveragePRs } from "./LeverageSection";
+import { EngineerReliability } from "./ReliabilitySection";
 import { StackedBreakdownChart } from "./StackedBreakdownChart";
+import { buildInitiatives } from "@/lib/leadershipScoring";
 import { getMix, formatMedianMerge, formatPrSize, formatReviewResponse, relativeTime } from "@/utils/format";
-
-const PR_TYPE_LABELS: Record<string, string> = {
-  bugfix: "Bug fixes",
-  feature: "Features",
-  refactor: "Refactors",
-  infra: "Infra",
-  docs: "Docs",
-  test: "Test-only",
-  other: "Other",
-};
+import { BASE_PR, REVIEW_WEIGHT } from "@/lib/impact-metrics";
 
 export function DetailPanel({
   engineer,
-  insight,
+  engineers,
   onClose,
 }: {
   engineer: Engineer;
-  insight?: EngineerInsight | null;
+  engineers?: Engineer[];
   onClose: () => void;
 }) {
+  const teamLeverageCount = engineers ? countTeamLeveragePRs(engineers) : 0;
+  const allInitiatives = engineers ? buildInitiatives(engineers) : [];
   const info = getMix(engineer.breakdown);
 
   return (
@@ -63,6 +109,8 @@ export function DetailPanel({
         </button>
       </div>
 
+      <ScoreBreakdownSection engineer={engineer} />
+
       <div className="mt-2.5 grid grid-cols-2 gap-2 text-center text-xs">
         <div className="rounded-md bg-blue-50/80 px-2 py-1.5 dark:bg-blue-500/10">
           <span className="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">
@@ -90,24 +138,11 @@ export function DetailPanel({
         )}
       </div>
 
-      {insight && Object.keys(insight.prTypes || {}).length > 0 && (
-        <div className="mt-2.5">
-          <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-            Work focus
-          </h4>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
-            {Object.entries(insight.prTypes ?? {})
-              .filter(([, n]) => (n as number) > 0)
-              .sort(([, a], [, b]) => (b as number) - (a as number))
-              .slice(0, 6)
-              .map(([key, n]) => (
-                <span key={key}>
-                  {PR_TYPE_LABELS[key] ?? key}: <strong className="text-zinc-700 dark:text-zinc-300">{n as number}</strong>
-                </span>
-              ))}
-          </div>
-        </div>
-      )}
+      <EngineerOutcomes engineer={engineer} />
+      <EngineerLeverage engineer={engineer} teamLeverageCount={teamLeverageCount} />
+      <EngineerReliability engineer={engineer} />
+      <EngineerLeadership engineer={engineer} allInitiatives={allInitiatives} />
+      <EngineerTeamImpact engineer={engineer} />
 
       <div className="mt-2.5">
         <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
