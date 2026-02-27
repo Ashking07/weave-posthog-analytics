@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { InfoTooltip } from "@/components/ui";
 import type {
   DoraProxies,
   LeadTimeResult,
@@ -14,27 +15,6 @@ function formatHours(h: number): string {
   if (h < 1) return `${Math.round(h * 60)}m`;
   if (h < 24) return `${h.toFixed(1)}h`;
   return `${(h / 24).toFixed(1)}d`;
-}
-
-function InfoTooltip({ text }: { text: string }) {
-  return (
-    <span className="group relative ml-0.5 inline-flex">
-      <span
-        className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
-        aria-label="Proxy formula"
-      >
-        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
-        </svg>
-      </span>
-      <span
-        className="pointer-events-none absolute bottom-full left-0 z-50 mb-1 max-w-[220px] rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-[10px] text-zinc-600 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-        role="tooltip"
-      >
-        {text}
-      </span>
-    </span>
-  );
 }
 
 function NotesPopover({ notes }: { notes: string[] }) {
@@ -82,9 +62,9 @@ interface TileProps {
 function KpiTile({ label, value, secondary, tooltip }: TileProps) {
   return (
     <div className="flex flex-col rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
         <p className="text-[11px] font-medium text-zinc-500">{label}</p>
-        <InfoTooltip text={tooltip} />
+        <InfoTooltip content={tooltip} label="Proxy formula" />
       </div>
       <p className="font-mono text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
         {value}
