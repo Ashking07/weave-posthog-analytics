@@ -48,17 +48,27 @@ function ScoreBreakdownSection({ engineer }: { engineer: Engineer }) {
 }
 import { Avatar, Card } from "@/components/ui";
 import { MixBadge } from "./MixBadge";
+import { EngineerOutcomes } from "./ImpactOutcomes";
+import { EngineerLeadership } from "./LeadershipSection";
+import { EngineerTeamImpact } from "./TeamImpactSection";
+import { EngineerLeverage, countTeamLeveragePRs } from "./LeverageSection";
+import { EngineerReliability } from "./ReliabilitySection";
 import { StackedBreakdownChart } from "./StackedBreakdownChart";
+import { buildInitiatives } from "@/lib/leadershipScoring";
 import { getMix, formatMedianMerge, formatPrSize, formatReviewResponse, relativeTime } from "@/utils/format";
 import { BASE_PR, REVIEW_WEIGHT } from "@/lib/impact-metrics";
 
 export function DetailPanel({
   engineer,
+  engineers,
   onClose,
 }: {
   engineer: Engineer;
+  engineers?: Engineer[];
   onClose: () => void;
 }) {
+  const teamLeverageCount = engineers ? countTeamLeveragePRs(engineers) : 0;
+  const allInitiatives = engineers ? buildInitiatives(engineers) : [];
   const info = getMix(engineer.breakdown);
 
   return (
@@ -127,6 +137,12 @@ export function DetailPanel({
           <span title="Time from PR open to first review">Review response: {formatReviewResponse(engineer.medianReviewResponseHours)}</span>
         )}
       </div>
+
+      <EngineerOutcomes engineer={engineer} />
+      <EngineerLeverage engineer={engineer} teamLeverageCount={teamLeverageCount} />
+      <EngineerReliability engineer={engineer} />
+      <EngineerLeadership engineer={engineer} allInitiatives={allInitiatives} />
+      <EngineerTeamImpact engineer={engineer} />
 
       <div className="mt-2.5">
         <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">

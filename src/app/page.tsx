@@ -1,22 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui";
+import { DashboardLayout } from "@/components/layout";
 import {
-  DetailPanel,
-  ExecutiveSummary,
-  LLMInsightsSection,
-  Methodology,
+  DashboardHeader,
+  DoraKpiRow,
+  EngineerDetailDrawer,
+  ExecutiveSummaryStrip,
+  ImpactGrid,
+  ImpactOutcomes,
+  JumpToNav,
+  LeadershipSection,
+  LeverageSection,
+  ReliabilitySection,
   RepoSearchBar,
   ScoreChart,
+  TeamImpactSection,
   TopEngineersTable,
 } from "@/components/dashboard";
 import { useGitHubToken } from "@/hooks/useGitHubToken";
 import { useImpactData, GITHUB_PAT_URL } from "@/hooks/useImpactData";
 import type { Engineer, RepoSearchResult } from "@/types";
-import { relativeTime } from "@/utils/format";
 
-const DEFAULT_REPO = "facebook/react";
+const DEFAULT_REPO = "PostHog/posthog";
 
 const LOADING_STEPS = [
   { id: "fetch_prs", label: "Fetching merged PRs…" },
@@ -92,6 +99,9 @@ function LoadingSteps({
 export default function Home() {
   const [repo, setRepo] = useState(DEFAULT_REPO);
   const [topLimit, setTopLimit] = useState<5 | 10>(5);
+  const [windowDays, setWindowDays] = useState(90);
+  const [excludeBots, setExcludeBots] = useState(true);
+  const [engineerSearch, setEngineerSearch] = useState("");
   const [userToken, setUserToken] = useGitHubToken();
   const [showTokenInput, setShowTokenInput] = useState(false);
 
@@ -103,9 +113,15 @@ export default function Home() {
 
   const [selected, setSelected] = useState<Engineer | null>(null);
 
-  // Timer-driven step progression: advance every ~3.33s over 10s total
   const [timerStepIndex, setTimerStepIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const filteredEngineers = useMemo(() => {
+    const top = data?.top ?? [];
+    if (!engineerSearch.trim()) return top;
+    const q = engineerSearch.toLowerCase().trim();
+    return top.filter((e) => e.login.toLowerCase().includes(q));
+  }, [data?.top, engineerSearch]);
 
   useEffect(() => {
     if (!loading || data) {
@@ -155,12 +171,25 @@ export default function Home() {
               token={userToken}
             />
           </div>
-          <AdvancedSection
-            showTokenInput={showTokenInput}
-            setShowTokenInput={setShowTokenInput}
-            userToken={userToken}
-            setUserToken={setUserToken}
-          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowTokenInput(!showTokenInput)}
+              className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300"
+            >
+              {showTokenInput ? "Hide token" : "GitHub token"}
+            </button>
+            {showTokenInput && (
+              <input
+                type="password"
+                placeholder="ghp_..."
+                value={userToken ?? ""}
+                onChange={(e) => setUserToken(e.target.value.trim() || null)}
+                className="max-w-40 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
+                autoComplete="off"
+              />
+            )}
+          </div>
         </div>
       </div>
     );
@@ -168,44 +197,63 @@ export default function Home() {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-gradient-to-br dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 font-[family-name:var(--font-geist-sans)]">
-        <Header
-          repo={repo}
-          onRepoSelect={handleRepoSelect}
-          userToken={userToken}
-          showTokenInput={showTokenInput}
-          setShowTokenInput={setShowTokenInput}
-          setUserToken={setUserToken}
-        />
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-4 py-2">
-          <div className="flex flex-shrink-0 items-center gap-3">
-            <TopToggle value={topLimit} onChange={setTopLimit} loading />
-            <p className="text-xs text-zinc-500">Fetching data for {repo}…</p>
-          </div>
-          <div className="flex flex-1 items-center justify-center">
-            <LoadingSteps
-              steps={LOADING_STEPS}
-              timerStepIndex={timerStepIndex}
-              completedSteps={loadingProgress.completedSteps}
-            />
-          </div>
+        <DashboardLayout
+        header={
+          <DashboardHeader
+            repo={repo}
+            onRepoSelect={handleRepoSelect}
+            windowDays={windowDays}
+            onWindowDaysChange={setWindowDays}
+            topLimit={topLimit}
+            onTopLimitChange={setTopLimit}
+            excludeBots={excludeBots}
+            onExcludeBotsChange={setExcludeBots}
+            engineerSearch={engineerSearch}
+            onEngineerSearchChange={setEngineerSearch}
+            userToken={userToken}
+            showTokenInput={showTokenInput}
+            setShowTokenInput={setShowTokenInput}
+            setUserToken={setUserToken}
+            loading={loading}
+          />
+        }
+      >
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12">
+          <p className="text-xs text-zinc-500">Fetching data for {repo}…</p>
+          <LoadingSteps
+            steps={LOADING_STEPS}
+            timerStepIndex={timerStepIndex}
+            completedSteps={loadingProgress.completedSteps}
+          />
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (error && !data) {
     return (
-      <div className="flex min-h-screen flex-col bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
-        <Header
-          repo={repo}
-          onRepoSelect={handleRepoSelect}
-          userToken={userToken}
-          showTokenInput={showTokenInput}
-          setShowTokenInput={setShowTokenInput}
-          setUserToken={setUserToken}
-        />
-        <div className="flex flex-1 items-center justify-center px-4">
+        <DashboardLayout
+        header={
+          <DashboardHeader
+            repo={repo}
+            onRepoSelect={handleRepoSelect}
+            windowDays={windowDays}
+            onWindowDaysChange={setWindowDays}
+            topLimit={topLimit}
+            onTopLimitChange={setTopLimit}
+            excludeBots={excludeBots}
+            onExcludeBotsChange={setExcludeBots}
+            engineerSearch={engineerSearch}
+            onEngineerSearchChange={setEngineerSearch}
+            userToken={userToken}
+            showTokenInput={showTokenInput}
+            setShowTokenInput={setShowTokenInput}
+            setUserToken={setUserToken}
+            loading={loading}
+          />
+        }
+      >
+        <div className="flex flex-1 items-center justify-center px-4 py-12">
           <Card className="max-w-md border-red-500/20 bg-red-500/5 p-5 text-center">
             <p className="mb-1 text-sm font-semibold text-red-400">Failed to load</p>
             <p className="text-xs text-red-400/90">{error}</p>
@@ -239,215 +287,134 @@ export default function Home() {
             </div>
           </Card>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   const top = data!.top;
   const prsCount = data!.prsCount;
   const reviewsCount = data!.reviewsCount;
+  const effectiveWindowDays = data!.windowDays ?? windowDays;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-zinc-50 font-[family-name:var(--font-geist-sans)] dark:bg-gradient-to-br dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
-      <Header
-        repo={repo}
-        onRepoSelect={handleRepoSelect}
-        userToken={userToken}
-        showTokenInput={showTokenInput}
-        setShowTokenInput={setShowTokenInput}
-        setUserToken={setUserToken}
-      />
-
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-4 py-2">
-        <ExecutiveSummary
-          engineers={top}
+    <DashboardLayout
+      header={
+        <DashboardHeader
+          repo={repo}
+          onRepoSelect={handleRepoSelect}
+          windowDays={effectiveWindowDays}
+          onWindowDaysChange={setWindowDays}
+          topLimit={topLimit}
+          onTopLimitChange={setTopLimit}
+          excludeBots={excludeBots}
+          onExcludeBotsChange={setExcludeBots}
+          engineerSearch={engineerSearch}
+          onEngineerSearchChange={setEngineerSearch}
+          userToken={userToken}
+          showTokenInput={showTokenInput}
+          setShowTokenInput={setShowTokenInput}
+          setUserToken={setUserToken}
+          loading={loading}
+        />
+      }
+    >
+      <div className="mx-auto flex max-w-7xl flex-col gap-3">
+        <ExecutiveSummaryStrip
+          engineers={filteredEngineers}
           prsCount={prsCount}
           reviewsCount={reviewsCount}
-          windowDays={data!.windowDays}
+          windowDays={effectiveWindowDays}
         />
-        <div className="flex flex-shrink-0 items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <TopToggle value={topLimit} onChange={setTopLimit} loading={loading} />
-            <p className="text-xs text-zinc-500">
-              {prsCount != null && reviewsCount != null ? (
-                <>
-                  Analyzed <strong className="font-mono text-zinc-700 dark:text-zinc-300">{prsCount}</strong> merged PRs and{" "}
-                  <strong className="font-mono text-zinc-700 dark:text-zinc-300">{reviewsCount}</strong> reviews
-                </>
-              ) : (
-                "Top contributors"
-              )}{" "}
-              (last {data!.windowDays} days). Bots and review-only excluded.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Methodology />
-            <span className="text-[11px] text-zinc-500">{relativeTime(data!.generatedAt)}</span>
-          </div>
+
+        <div className="flex flex-col gap-2 border-b border-zinc-200 pb-3 dark:border-zinc-800">
+          <JumpToNav />
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_280px] gap-3">
-          <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
-            <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-200 dark:border-zinc-800/80 dark:bg-zinc-900/50">
-              <div className="max-h-[280px] min-h-0 overflow-y-auto p-2">
-                <TopEngineersTable
-                  engineers={top}
-                  selected={selected}
-                  onSelect={setSelected}
-                  prsCount={prsCount ?? undefined}
-                />
-              </div>
-            </Card>
-            <LLMInsightsSection selected={selected} insights={data!.insights} />
+        <DoraKpiRow
+          doraProxies={data!.doraProxies}
+          windowDays={effectiveWindowDays}
+        />
+
+        <ImpactGrid>
+          <ImpactOutcomes
+            engineers={filteredEngineers}
+            totalPrs={prsCount ?? undefined}
+            onSelectEngineer={(login) => {
+              const eng = top.find((e) => e.login === login);
+              if (eng) setSelected(eng);
+            }}
+          />
+          <LeverageSection
+            engineers={filteredEngineers}
+            onSelectEngineer={(login) => {
+              const eng = top.find((e) => e.login === login);
+              if (eng) setSelected(eng);
+            }}
+          />
+          <ReliabilitySection
+            engineers={filteredEngineers}
+            onSelectEngineer={(login) => {
+              const eng = top.find((e) => e.login === login);
+              if (eng) setSelected(eng);
+            }}
+          />
+          <LeadershipSection
+            engineers={filteredEngineers}
+            onSelectEngineer={(login) => {
+              const eng = top.find((e) => e.login === login);
+              if (eng) setSelected(eng);
+            }}
+          />
+          <TeamImpactSection
+            engineers={filteredEngineers}
+            onSelectEngineer={(login) => {
+              const eng = top.find((e) => e.login === login);
+              if (eng) setSelected(eng);
+            }}
+          />
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
+            <div className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/30">
+              <h3 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                Engineers
+              </h3>
+            </div>
+            <div className="max-h-[260px] min-h-0 overflow-y-auto p-2">
+              <TopEngineersTable
+                engineers={filteredEngineers}
+                selected={selected}
+                onSelect={setSelected}
+                prsCount={prsCount ?? undefined}
+              />
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white px-2 py-2 dark:border-zinc-800/80 dark:bg-zinc-900/50">
+            <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              Total Scores
+            </h3>
+            <div className="min-h-[120px]">
+              <ScoreChart
+                engineers={filteredEngineers}
+                selectedLogin={selected?.login ?? null}
+                onSelect={(eng) => setSelected(selected?.login === eng.login ? null : eng)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {selected && (
+              <EngineerDetailDrawer
+                engineer={selected}
+                engineers={top}
+                windowDays={effectiveWindowDays}
+                insights={data!.insights}
+                onClose={() => setSelected(null)}
+              />
+            )}
             {loading && data && (
               <p className="text-[11px] text-zinc-500">Updating AI insights…</p>
             )}
           </div>
-
-          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-            {selected && (
-              <DetailPanel engineer={selected} onClose={() => setSelected(null)} />
-            )}
-            <Card className="flex shrink-0 flex-col overflow-hidden border-zinc-200 px-2 py-2 dark:border-zinc-800/80 dark:bg-zinc-900/50">
-              <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                Total Scores
-              </h3>
-              <div className="min-h-[120px]">
-                <ScoreChart
-                  engineers={top}
-                  selectedLogin={selected?.login ?? null}
-                  onSelect={(eng) => setSelected(selected?.login === eng.login ? null : eng)}
-                />
-              </div>
-            </Card>
-          </div>
-        </div>
+        </ImpactGrid>
       </div>
-    </div>
-  );
-}
-
-function Header({
-  repo,
-  onRepoSelect,
-  userToken,
-  showTokenInput,
-  setShowTokenInput,
-  setUserToken,
-}: {
-  repo: string;
-  onRepoSelect: (r: RepoSearchResult) => void;
-  userToken: string | null;
-  showTokenInput: boolean;
-  setShowTokenInput: (v: boolean) => void;
-  setUserToken: (v: string | null) => void;
-}) {
-  return (
-    <header className="relative z-20 flex-shrink-0 border-b border-zinc-200 bg-white px-4 py-2 backdrop-blur-sm dark:border-zinc-800/60 dark:bg-zinc-900/30">
-      <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <h1 className="shrink-0 bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
-            OSS Impact
-          </h1>
-          <div className="min-w-0 flex-1">
-            <RepoSearchBar
-              value={repo}
-              onSelect={onRepoSelect}
-              placeholder="Search repo..."
-              token={userToken}
-            />
-          </div>
-        </div>
-        <AdvancedSection
-          showTokenInput={showTokenInput}
-          setShowTokenInput={setShowTokenInput}
-          userToken={userToken}
-          setUserToken={setUserToken}
-        />
-      </div>
-    </header>
-  );
-}
-
-function AdvancedSection({
-  showTokenInput,
-  setShowTokenInput,
-  userToken,
-  setUserToken,
-}: {
-  showTokenInput: boolean;
-  setShowTokenInput: (v: boolean) => void;
-  userToken: string | null;
-  setUserToken: (v: string | null) => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setShowTokenInput(!showTokenInput)}
-        className="flex items-center gap-2 rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20 hover:text-violet-200"
-      >
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-        </svg>
-        {showTokenInput ? "Hide token" : "GitHub token"}
-      </button>
-      {showTokenInput && (
-        <div className="flex items-center gap-1.5">
-          <input
-            type="password"
-            placeholder="ghp_... (browser only)"
-            value={userToken ?? ""}
-            onChange={(e) => setUserToken(e.target.value.trim() || null)}
-            className="max-w-40 rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-            autoComplete="off"
-          />
-          <a
-            href={GITHUB_PAT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 rounded px-2 py-1 text-[10px] font-medium text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
-          >
-            Create token
-          </a>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TopToggle({
-  value,
-  onChange,
-  loading = false,
-}: {
-  value: 5 | 10;
-  onChange: (v: 5 | 10) => void;
-  loading?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-800/40 p-0.5">
-        {([5, 10] as const).map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            disabled={loading}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-70 ${
-              value === n ? "bg-violet-500/20 text-violet-300" : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            Top {n}
-          </button>
-        ))}
-      </div>
-      {loading && (
-        <div
-          className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-500 border-t-violet-400"
-          aria-hidden
-        />
-      )}
-    </div>
+    </DashboardLayout>
   );
 }
