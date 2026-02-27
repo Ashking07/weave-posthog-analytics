@@ -11,17 +11,20 @@ export function RepoSearchBar({
   onSelect,
   placeholder = "Search any open source repo...",
   token,
+  parentLoading,
 }: {
   value: string;
   onChange?: (v: string) => void;
   onSelect: (repo: RepoSearchResult) => void;
   placeholder?: string;
   token?: string | null;
+  parentLoading?: boolean;
 }) {
   const [query, setQuery] = useState(value);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<RepoSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [debouncing, setDebouncing] = useState(false);
   const [open, setOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,15 +64,19 @@ export function RepoSearchBar({
     if (!query.trim()) {
       setResults([]);
       setOpen(false);
+      setDebouncing(false);
       return;
     }
     // Don't search or reopen when query matches value (user just selected a suggestion)
     if (query === value) {
       setOpen(false);
       setResults([]);
+      setDebouncing(false);
       return;
     }
+    setDebouncing(true);
     debounceRef.current = setTimeout(() => {
+      setDebouncing(false);
       search(query);
       setOpen(true);
     }, DEBOUNCE_MS);
@@ -142,7 +149,7 @@ export function RepoSearchBar({
           className="w-full rounded-xl border border-zinc-200/80 bg-white py-2.5 pl-10 pr-10 text-sm text-zinc-900 placeholder-zinc-400 shadow-sm transition-all focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-violet-500 dark:focus:ring-violet-500/20"
           autoComplete="off"
         />
-        {loading && (
+        {(loading || debouncing || parentLoading) && (
           <div
             className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-zinc-200 border-t-violet-500 dark:border-zinc-700 dark:border-t-violet-400"
             aria-hidden

@@ -54,6 +54,7 @@ export function DashboardHeader({
               onSelect={onRepoSelect}
               placeholder="Repo..."
               token={userToken}
+              parentLoading={loading}
             />
           </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Card } from "@/components/ui";
+import { Card, InfoTooltip } from "@/components/ui";
 import { DashboardLayout } from "@/components/layout";
 import {
   DashboardHeader,
@@ -373,10 +373,14 @@ export default function Home() {
             }}
           />
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-            <div className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/30">
+            <div className="flex items-center gap-1.5 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/30">
               <h3 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                 Engineers
               </h3>
+              <InfoTooltip
+                content="Impact score = PRs (3 pts each + complexity from size) + reviews (1.2 pts each). Higher = more shipped and unblocked."
+                label="How is the score calculated?"
+              />
             </div>
             <div className="max-h-[260px] min-h-0 overflow-y-auto p-2">
               <TopEngineersTable
